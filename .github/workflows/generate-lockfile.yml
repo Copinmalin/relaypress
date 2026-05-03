@@ -1,0 +1,52 @@
+name: Generate pnpm lockfile
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - pnpm-workspace.yaml
+      - packages/**/package.json
+      - services/**/package.json
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  generate-lockfile:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Generate lockfile
+        run: pnpm install --lockfile-only
+
+      - name: Commit lockfile if changed
+        run: |
+          if git diff --quiet pnpm-lock.yaml; then
+            echo "pnpm-lock.yaml is already up to date"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pnpm-lock.yaml
+          git commit -m "Add pnpm lockfile"
+          git push
