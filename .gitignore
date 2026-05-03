@@ -1,0 +1,30 @@
+node_modules
+.pnpm-store
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist
+build
+coverage
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editors
+.DS_Store
+.idea
+.vscode
+
+# Docker / local data
+data
+postgres_data
+redis_data
+strfry_data
+caddy_data
+caddy_config
