@@ -10,10 +10,13 @@ type PublicationJobStatus =
   | "published"
   | "failed";
 
+type SortOrder = "asc" | "desc";
+
 type PublicationJobsQuery = {
   status?: PublicationJobStatus;
   platform?: string;
   limit?: string;
+  order?: SortOrder;
 };
 
 type PublicationJobParams = {
@@ -52,6 +55,10 @@ function parseLimit(value: string | undefined): number {
   if (!Number.isFinite(parsed)) return 50;
 
   return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+}
+
+function parseOrder(value: string | undefined): SortOrder {
+  return value === "asc" ? "asc" : "desc";
 }
 
 function rowToPublicationJob(row: Record<string, unknown>) {
@@ -116,6 +123,7 @@ async function updatePublicationJobStatus(
 export async function registerPublicationJobRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: PublicationJobsQuery }>("/publication-jobs", async (request) => {
     const limit = parseLimit(request.query.limit);
+    const order = parseOrder(request.query.order);
     const values: unknown[] = [];
     const clauses: string[] = [];
 
@@ -138,7 +146,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       `
         ${PUBLICATION_JOB_SELECT}
         ${where}
-        order by j.created_at desc
+        order by j.created_at ${order}
         limit ${limitPlaceholder}
       `,
       values,
@@ -146,22 +154,25 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
 
     return {
       count: result.rowCount,
+      order,
       jobs: result.rows.map(rowToPublicationJob),
     };
   });
 
-  app.get("/publication-jobs/pending", async () => {
+  app.get<{ Querystring: Pick<PublicationJobsQuery, "order"> }>("/publication-jobs/pending", async (request) => {
+    const order = parseOrder(request.query.order);
     const result = await pool.query(
       `
         ${PUBLICATION_JOB_SELECT}
         where j.status in ('pending', 'pending_review')
-        order by j.created_at desc
+        order by j.created_at ${order}
         limit 100
       `,
     );
 
     return {
       count: result.rowCount,
+      order,
       jobs: result.rows.map(rowToPublicationJob),
     };
   });
