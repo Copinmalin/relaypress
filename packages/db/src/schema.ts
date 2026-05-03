@@ -41,3 +41,25 @@ export const publicationJobs = pgTable(
     statusIdx: index("publication_jobs_status_idx").on(table.status),
   }),
 );
+
+export const publicationJobRuns = pgTable(
+  "publication_job_runs",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    jobId: varchar("job_id", { length: 128 }).notNull().references(() => publicationJobs.id),
+    platform: varchar("platform", { length: 64 }).notNull(),
+    status: varchar("status", { length: 64 }).notNull(),
+    mode: varchar("mode", { length: 64 }).notNull(),
+    externalPostId: varchar("external_post_id", { length: 256 }),
+    errorMessage: text("error_message"),
+    startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    rawResponse: jsonb("raw_response").$type<Record<string, unknown>>(),
+  },
+  (table) => ({
+    jobIdx: index("publication_job_runs_job_idx").on(table.jobId),
+    platformIdx: index("publication_job_runs_platform_idx").on(table.platform),
+    statusIdx: index("publication_job_runs_status_idx").on(table.status),
+    startedAtIdx: index("publication_job_runs_started_at_idx").on(table.startedAt),
+  }),
+);
