@@ -41,3 +41,6 @@ jobs:
 
       - name: Validate Docker Compose config
         run: docker compose config
+
+      - name: Build Docker images
+        run: docker compose build api worker
