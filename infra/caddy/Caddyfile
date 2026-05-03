@@ -1,4 +1,4 @@
-{$API_DOMAIN:api.relaypress.localhost} {
+{$PUBLISHER_DOMAIN:app.relaypress.localhost} {
   reverse_proxy api:3000
 }
 
