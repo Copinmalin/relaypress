@@ -40,13 +40,18 @@ jobs:
 
       - name: Commit lockfile if changed
         run: |
-          if git diff --quiet pnpm-lock.yaml; then
+          if [ ! -f pnpm-lock.yaml ]; then
+            echo "pnpm-lock.yaml was not generated"
+            exit 1
+          fi
+
+          if [ -z "$(git status --porcelain pnpm-lock.yaml)" ]; then
             echo "pnpm-lock.yaml is already up to date"
             exit 0
           fi
 
           git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
           git add pnpm-lock.yaml
           git commit -m "Add pnpm lockfile"
           git push
