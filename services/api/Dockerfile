@@ -15,6 +15,7 @@ FROM base AS runtime
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/services/api/node_modules ./services/api/node_modules
 COPY --from=build /app/services/api/package.json ./services/api/package.json
 COPY --from=build /app/services/api/dist ./services/api/dist
 EXPOSE 3000
