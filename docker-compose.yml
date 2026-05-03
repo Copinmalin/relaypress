@@ -48,7 +48,6 @@ services:
     volumes:
       - strfry_data:/app/strfry-db
       - ./infra/relay/strfry.conf:/etc/strfry.conf:ro
-    command: ["strfry", "relay", "/etc/strfry.conf"]
     stop_grace_period: 2m
 
   api:
