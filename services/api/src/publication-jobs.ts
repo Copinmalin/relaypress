@@ -88,6 +88,21 @@ function rowToPublicationJob(row: Record<string, unknown>) {
   };
 }
 
+function rowToPublicationJobRun(row: Record<string, unknown>) {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    platform: row.platform,
+    status: row.status,
+    mode: row.mode,
+    externalPostId: row.external_post_id,
+    errorMessage: row.error_message,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    rawResponse: row.raw_response,
+  };
+}
+
 async function findPublicationJobById(id: string) {
   const result = await pool.query(
     `
@@ -187,6 +202,44 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
 
     return { job };
   });
+
+  app.get<{ Params: PublicationJobParams; Querystring: Pick<PublicationJobsQuery, "order"> }>(
+    "/publication-jobs/:id/runs",
+    async (request, reply) => {
+      const job = await findPublicationJobById(request.params.id);
+
+      if (!job) {
+        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+      }
+
+      const order = parseOrder(request.query.order);
+      const result = await pool.query(
+        `
+          select
+            id,
+            job_id,
+            platform,
+            status,
+            mode,
+            external_post_id,
+            error_message,
+            started_at,
+            finished_at,
+            raw_response
+          from publication_job_runs
+          where job_id = $1
+          order by started_at ${order}
+        `,
+        [request.params.id],
+      );
+
+      return {
+        count: result.rowCount,
+        order,
+        runs: result.rows.map(rowToPublicationJobRun),
+      };
+    },
+  );
 
   app.post<{ Params: PublicationJobParams }>(
     "/publication-jobs/:id/approve",
