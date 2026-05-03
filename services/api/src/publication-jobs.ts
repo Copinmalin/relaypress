@@ -1,13 +1,51 @@
 import type { FastifyInstance } from "fastify";
 import { pool } from "./db.js";
 
-type PublicationJobStatus = "pending" | "pending_review" | "drafted" | "published" | "failed";
+type PublicationJobStatus =
+  | "pending"
+  | "pending_review"
+  | "drafted"
+  | "approved"
+  | "rejected"
+  | "published"
+  | "failed";
 
 type PublicationJobsQuery = {
   status?: PublicationJobStatus;
   platform?: string;
   limit?: string;
 };
+
+type PublicationJobParams = {
+  id: string;
+};
+
+type RejectBody = {
+  reason?: string;
+};
+
+const PUBLICATION_JOB_SELECT = `
+  select
+    j.id,
+    j.source_event_id,
+    j.platform,
+    j.status,
+    j.adapted_content,
+    j.external_post_id,
+    j.error_message,
+    j.scheduled_at,
+    j.published_at,
+    j.created_at,
+    j.updated_at,
+    e.id as event_id,
+    e.kind as event_kind,
+    e.pubkey as event_pubkey,
+    e.content as event_content,
+    e.created_at as event_created_at,
+    e.indexed_at as event_indexed_at
+  from publication_jobs j
+  left join nostr_events e on e.id = j.source_event_id
+`;
 
 function parseLimit(value: string | undefined): number {
   const parsed = Number(value ?? 50);
@@ -42,6 +80,39 @@ function rowToPublicationJob(row: Record<string, unknown>) {
   };
 }
 
+async function findPublicationJobById(id: string) {
+  const result = await pool.query(
+    `
+      ${PUBLICATION_JOB_SELECT}
+      where j.id = $1
+      limit 1
+    `,
+    [id],
+  );
+
+  return result.rows[0] ? rowToPublicationJob(result.rows[0]) : null;
+}
+
+async function updatePublicationJobStatus(
+  id: string,
+  status: Extract<PublicationJobStatus, "approved" | "rejected">,
+  errorMessage: string | null = null,
+) {
+  await pool.query(
+    `
+      update publication_jobs
+      set
+        status = $2,
+        error_message = $3,
+        updated_at = now()
+      where id = $1
+    `,
+    [id, status, errorMessage],
+  );
+
+  return findPublicationJobById(id);
+}
+
 export async function registerPublicationJobRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: PublicationJobsQuery }>("/publication-jobs", async (request) => {
     const limit = parseLimit(request.query.limit);
@@ -65,26 +136,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
 
     const result = await pool.query(
       `
-        select
-          j.id,
-          j.source_event_id,
-          j.platform,
-          j.status,
-          j.adapted_content,
-          j.external_post_id,
-          j.error_message,
-          j.scheduled_at,
-          j.published_at,
-          j.created_at,
-          j.updated_at,
-          e.id as event_id,
-          e.kind as event_kind,
-          e.pubkey as event_pubkey,
-          e.content as event_content,
-          e.created_at as event_created_at,
-          e.indexed_at as event_indexed_at
-        from publication_jobs j
-        left join nostr_events e on e.id = j.source_event_id
+        ${PUBLICATION_JOB_SELECT}
         ${where}
         order by j.created_at desc
         limit ${limitPlaceholder}
@@ -101,26 +153,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
   app.get("/publication-jobs/pending", async () => {
     const result = await pool.query(
       `
-        select
-          j.id,
-          j.source_event_id,
-          j.platform,
-          j.status,
-          j.adapted_content,
-          j.external_post_id,
-          j.error_message,
-          j.scheduled_at,
-          j.published_at,
-          j.created_at,
-          j.updated_at,
-          e.id as event_id,
-          e.kind as event_kind,
-          e.pubkey as event_pubkey,
-          e.content as event_content,
-          e.created_at as event_created_at,
-          e.indexed_at as event_indexed_at
-        from publication_jobs j
-        left join nostr_events e on e.id = j.source_event_id
+        ${PUBLICATION_JOB_SELECT}
         where j.status in ('pending', 'pending_review')
         order by j.created_at desc
         limit 100
@@ -131,5 +164,36 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       count: result.rowCount,
       jobs: result.rows.map(rowToPublicationJob),
     };
+  });
+
+  app.get<{ Params: PublicationJobParams }>("/publication-jobs/:id", async (request, reply) => {
+    const job = await findPublicationJobById(request.params.id);
+
+    if (!job) {
+      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+    }
+
+    return { job };
+  });
+
+  app.post<{ Params: PublicationJobParams }>("/publication-jobs/:id/approve", async (request, reply) => {
+    const job = await updatePublicationJobStatus(request.params.id, "approved");
+
+    if (!job) {
+      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+    }
+
+    return { job };
+  });
+
+  app.post<{ Params: PublicationJobParams; Body: RejectBody }>("/publication-jobs/:id/reject", async (request, reply) => {
+    const reason = request.body?.reason?.trim() || "Rejected from API";
+    const job = await updatePublicationJobStatus(request.params.id, "rejected", reason);
+
+    if (!job) {
+      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+    }
+
+    return { job };
   });
 }
