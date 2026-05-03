@@ -3,9 +3,9 @@ WORKDIR /app
 RUN corepack enable
 
 FROM base AS deps
-COPY package.json pnpm-workspace.yaml tsconfig.base.json ./
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml tsconfig.base.json ./
 COPY services/worker/package.json services/worker/package.json
-RUN pnpm install --filter @relaypress/worker... --frozen-lockfile=false
+RUN pnpm install --filter @relaypress/worker... --frozen-lockfile
 
 FROM deps AS build
 COPY services/worker services/worker
