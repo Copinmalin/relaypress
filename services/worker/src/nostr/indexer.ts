@@ -2,6 +2,7 @@ import { SimplePool } from "nostr-tools/pool";
 import type { Event, Filter } from "nostr-tools";
 import WebSocket from "ws";
 import { workerConfig } from "../config.js";
+import { storeNostrEvent } from "./store.js";
 
 // nostr-tools expects a WebSocket implementation when running under Node.
 // The cast keeps the implementation isolated from the rest of the worker.
@@ -48,17 +49,30 @@ export async function startNostrIndexer(): Promise<void> {
   }));
 
   const sub = pool.subscribeMany(relays, filter, {
-    onevent(event: RelayPressNostrEvent) {
-      console.log(JSON.stringify({
-        service: "relaypress-worker",
-        component: "nostr-indexer",
-        status: "event_received",
-        eventId: event.id,
-        pubkey: event.pubkey,
-        kind: event.kind,
-        createdAt: event.created_at,
-        timestamp: new Date().toISOString(),
-      }));
+    async onevent(event: RelayPressNostrEvent) {
+      try {
+        await storeNostrEvent(event);
+
+        console.log(JSON.stringify({
+          service: "relaypress-worker",
+          component: "nostr-indexer",
+          status: "event_stored",
+          eventId: event.id,
+          pubkey: event.pubkey,
+          kind: event.kind,
+          createdAt: event.created_at,
+          timestamp: new Date().toISOString(),
+        }));
+      } catch (error) {
+        console.error(JSON.stringify({
+          service: "relaypress-worker",
+          component: "nostr-indexer",
+          status: "event_store_failed",
+          eventId: event.id,
+          error: error instanceof Error ? error.message : String(error),
+          timestamp: new Date().toISOString(),
+        }));
+      }
     },
     oneose() {
       console.log(JSON.stringify({
