@@ -10,8 +10,10 @@ services:
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - api
-      - strfry
+      api:
+        condition: service_started
+      strfry:
+        condition: service_started
 
   postgres:
     image: postgres:16-alpine
@@ -34,14 +36,18 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   strfry:
     image: dockurr/strfry:latest
     restart: unless-stopped
     volumes:
       - strfry_data:/app/strfry-db
-      - ./infra/relay/strfry.conf:/etc/strfry.conf:ro
-    command: ["strfry", "relay", "/etc/strfry.conf"]
+    stop_grace_period: 2m
 
   api:
     build:
@@ -55,7 +61,7 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
 
   worker:
     build:
@@ -63,11 +69,13 @@ services:
       dockerfile: services/worker/Dockerfile
     restart: unless-stopped
     env_file: .env
+    environment:
+      WORKER_TICK_INTERVAL_MS: ${WORKER_TICK_INTERVAL_MS:-30000}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       strfry:
         condition: service_started
 
