@@ -1,5 +1,5 @@
-import { workerConfig } from "./config";
-import { startNostrIndexer } from "./nostr/indexer";
+import { workerConfig } from "./config.js";
+import { startNostrIndexer } from "./nostr/indexer.js";
 
 const appName = "relaypress";
 
