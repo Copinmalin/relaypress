@@ -5,7 +5,3 @@
 {$RELAY_DOMAIN:relay.relaypress.localhost} {
   reverse_proxy strfry:7777
 }
-
-{$RELAYPRESS_DOMAIN:relaypress.localhost} {
-  respond "RelayPress is running" 200
-}
