@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@fastify/cors": "^10.0.1",
+    "@relaypress/db": "workspace:*",
     "fastify": "^5.2.1"
   },
   "devDependencies": {
