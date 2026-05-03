@@ -2,6 +2,7 @@ import { SimplePool } from "nostr-tools/pool";
 import type { Event, Filter } from "nostr-tools";
 import WebSocket from "ws";
 import { workerConfig } from "../config.js";
+import { createPublicationJobsFromEvent } from "../publication/jobs.js";
 import { storeNostrEvent } from "./store.js";
 
 // nostr-tools expects a WebSocket implementation when running under Node.
@@ -68,6 +69,7 @@ export async function startNostrIndexer(): Promise<void> {
     async onevent(event: RelayPressNostrEvent) {
       try {
         await storeNostrEvent(event);
+        const jobsCreated = await createPublicationJobsFromEvent(event);
 
         console.log(JSON.stringify({
           service: "relaypress-worker",
@@ -77,6 +79,7 @@ export async function startNostrIndexer(): Promise<void> {
           pubkey: event.pubkey,
           kind: event.kind,
           createdAt: event.created_at,
+          jobsCreated,
           timestamp: new Date().toISOString(),
         }));
       } catch (error) {
