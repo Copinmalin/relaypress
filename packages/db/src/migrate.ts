@@ -1,6 +1,6 @@
-import type pg from "pg";
+import type { Pool } from "pg";
 
-export async function migrate(pool: pg.Pool): Promise<void> {
+export async function migrate(pool: Pool): Promise<void> {
   await pool.query(`
     create table if not exists nostr_events (
       id varchar(128) primary key,
