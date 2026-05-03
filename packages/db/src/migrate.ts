@@ -35,5 +35,23 @@ export async function migrate(pool: Pool): Promise<void> {
     create index if not exists publication_jobs_source_event_idx on publication_jobs(source_event_id);
     create index if not exists publication_jobs_platform_idx on publication_jobs(platform);
     create index if not exists publication_jobs_status_idx on publication_jobs(status);
+
+    create table if not exists publication_job_runs (
+      id varchar(128) primary key,
+      job_id varchar(128) not null references publication_jobs(id),
+      platform varchar(64) not null,
+      status varchar(64) not null,
+      mode varchar(64) not null,
+      external_post_id varchar(256),
+      error_message text,
+      started_at timestamptz not null default now(),
+      finished_at timestamptz,
+      raw_response jsonb
+    );
+
+    create index if not exists publication_job_runs_job_idx on publication_job_runs(job_id);
+    create index if not exists publication_job_runs_platform_idx on publication_job_runs(platform);
+    create index if not exists publication_job_runs_status_idx on publication_job_runs(status);
+    create index if not exists publication_job_runs_started_at_idx on publication_job_runs(started_at);
   `);
 }
