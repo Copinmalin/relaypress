@@ -1,0 +1,23 @@
+.git
+.github
+node_modules
+.pnpm-store
+.env
+.env.*
+!.env.example
+
+# Build outputs
+dist
+build
+coverage
+
+# Logs
+*.log
+
+# Local data
+data
+postgres_data
+redis_data
+strfry_data
+caddy_data
+caddy_config
