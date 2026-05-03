@@ -54,13 +54,25 @@ importers:
 
   services/worker:
     dependencies:
+      '@relaypress/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      drizzle-orm:
+        specifier: ^0.44.7
+        version: 0.44.7(@types/pg@8.20.0)(pg@8.20.0)
       nostr-tools:
         specifier: ^2.10.4
         version: 2.23.3(typescript@5.9.3)
+      pg:
+        specifier: ^8.13.1
+        version: 8.20.0
       ws:
         specifier: ^8.18.0
         version: 8.20.0
     devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
       '@types/ws':
         specifier: ^8.5.13
         version: 8.18.1
