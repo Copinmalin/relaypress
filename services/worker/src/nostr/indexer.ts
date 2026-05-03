@@ -47,7 +47,7 @@ export async function startNostrIndexer(): Promise<void> {
     timestamp: new Date().toISOString(),
   }));
 
-  const sub = pool.subscribeMany(relays, [filter], {
+  const sub = pool.subscribeMany(relays, filter, {
     onevent(event: RelayPressNostrEvent) {
       console.log(JSON.stringify({
         service: "relaypress-worker",
