@@ -1,4 +1,5 @@
 import type { FastifyInstance } from "fastify";
+import { requireAdminToken } from "./auth.js";
 import { pool } from "./db.js";
 
 type PublicationJobStatus =
@@ -187,24 +188,32 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     return { job };
   });
 
-  app.post<{ Params: PublicationJobParams }>("/publication-jobs/:id/approve", async (request, reply) => {
-    const job = await updatePublicationJobStatus(request.params.id, "approved");
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/approve",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await updatePublicationJobStatus(request.params.id, "approved");
 
-    if (!job) {
-      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
-    }
+      if (!job) {
+        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+      }
 
-    return { job };
-  });
+      return { job };
+    },
+  );
 
-  app.post<{ Params: PublicationJobParams; Body: RejectBody }>("/publication-jobs/:id/reject", async (request, reply) => {
-    const reason = request.body?.reason?.trim() || "Rejected from API";
-    const job = await updatePublicationJobStatus(request.params.id, "rejected", reason);
+  app.post<{ Params: PublicationJobParams; Body: RejectBody }>(
+    "/publication-jobs/:id/reject",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const reason = request.body?.reason?.trim() || "Rejected from API";
+      const job = await updatePublicationJobStatus(request.params.id, "rejected", reason);
 
-    if (!job) {
-      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
-    }
+      if (!job) {
+        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+      }
 
-    return { job };
-  });
+      return { job };
+    },
+  );
 }
