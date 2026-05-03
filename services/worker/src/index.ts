@@ -1,17 +1,19 @@
 import { RELAYPRESS_APP_NAME } from "@relaypress/shared";
-
-const intervalMs = Number(process.env.WORKER_TICK_INTERVAL_MS ?? 30_000);
+import { workerConfig } from "./config";
+import { startNostrIndexer } from "./nostr/indexer";
 
 async function tick() {
   console.log(JSON.stringify({
     service: "relaypress-worker",
     app: RELAYPRESS_APP_NAME,
-    status: "idle",
+    status: "running",
     timestamp: new Date().toISOString(),
   }));
 }
 
+await startNostrIndexer();
 await tick();
+
 setInterval(() => {
   void tick();
-}, intervalMs);
+}, workerConfig.tickIntervalMs);
