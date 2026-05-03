@@ -6,11 +6,16 @@
   "description": "Système éditorial souverain piloté par Nostr, IA et publication multi-plateforme",
   "type": "module",
   "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=9.15.0"
+  },
   "scripts": {
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm -r typecheck",
+    "check": "pnpm typecheck && pnpm build",
     "format": "prettier --write ."
   },
   "devDependencies": {
