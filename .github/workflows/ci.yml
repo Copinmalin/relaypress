@@ -17,6 +17,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure lockfile exists
+        run: |
+          if [ ! -f pnpm-lock.yaml ]; then
+            echo "pnpm-lock.yaml is missing. Run the 'Generate pnpm lockfile' workflow or run 'pnpm install --lockfile-only' locally and commit the result."
+            exit 1
+          fi
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -28,7 +35,7 @@ jobs:
           node-version: 24
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile=false
+        run: pnpm install --frozen-lockfile
 
       - name: Typecheck
         run: pnpm typecheck
