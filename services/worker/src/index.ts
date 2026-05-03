@@ -1,4 +1,5 @@
 import { workerConfig } from "./config.js";
+import { initializeDatabase } from "./db.js";
 import { startNostrIndexer } from "./nostr/indexer.js";
 
 const appName = "relaypress";
@@ -12,6 +13,7 @@ async function tick() {
   }));
 }
 
+await initializeDatabase();
 await startNostrIndexer();
 await tick();
 
