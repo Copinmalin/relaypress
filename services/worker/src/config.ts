@@ -17,6 +17,8 @@ export function readBooleanEnv(name: string, fallback = false): boolean {
 
 export const workerConfig = {
   tickIntervalMs: Number(process.env.WORKER_TICK_INTERVAL_MS ?? 30_000),
+  publisherMode: process.env.PUBLISHER_MODE ?? "mock",
+  publisherBatchSize: Number(process.env.PUBLISHER_BATCH_SIZE ?? 10),
   nostrPrivateRelay: process.env.NOSTR_PRIVATE_RELAY ?? "ws://strfry:7777",
   nostrPublicRelays: readCsvEnv("NOSTR_PUBLIC_RELAYS", [
     "wss://relay.damus.io",
