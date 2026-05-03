@@ -19,7 +19,11 @@ function uniqueRelays(): string[] {
   );
 }
 
-function buildFilter(): Filter {
+function buildFilter(): Filter | null {
+  if (workerConfig.nostrAllowedPubkeys.length === 0 && !workerConfig.nostrIndexAll) {
+    return null;
+  }
+
   const since = Math.floor(Date.now() / 1000) - workerConfig.nostrLookbackSeconds;
   const filter: Filter = {
     kinds: [1, 30023, 30024, 30078, 31922, 31923, 30420, 30421, 30422, 30423, 30424],
@@ -38,6 +42,18 @@ export async function startNostrIndexer(): Promise<void> {
   const pool = new SimplePool();
   const relays = uniqueRelays();
   const filter = buildFilter();
+
+  if (!filter) {
+    console.warn(JSON.stringify({
+      service: "relaypress-worker",
+      component: "nostr-indexer",
+      status: "disabled",
+      reason: "NOSTR_ALLOWED_PUBKEYS is empty and NOSTR_INDEX_ALL is not enabled",
+      timestamp: new Date().toISOString(),
+    }));
+
+    return;
+  }
 
   console.log(JSON.stringify({
     service: "relaypress-worker",
