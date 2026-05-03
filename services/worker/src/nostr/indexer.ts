@@ -1,4 +1,5 @@
-import { SimplePool, type EventTemplate } from "nostr-tools";
+import { SimplePool } from "nostr-tools/pool";
+import type { Event } from "nostr-tools";
 import WebSocket from "ws";
 import { workerConfig } from "../config";
 
@@ -6,11 +7,7 @@ import { workerConfig } from "../config";
 // The cast keeps the implementation isolated from the rest of the worker.
 (globalThis as unknown as { WebSocket: typeof WebSocket }).WebSocket = WebSocket;
 
-type RelayPressNostrEvent = EventTemplate & {
-  id: string;
-  pubkey: string;
-  sig: string;
-};
+type RelayPressNostrEvent = Event;
 
 function uniqueRelays(): string[] {
   return Array.from(
