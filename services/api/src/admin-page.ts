@@ -44,6 +44,15 @@ const adminHtml = String.raw`<!doctype html>
     .rejected, .failed { border-color: #ef4444; color: #fecaca; }
     .archived { border-color: #94a3b8; color: #cbd5e1; }
     .content { white-space: pre-wrap; line-height: 1.45; padding: 14px; background: rgba(3, 7, 18, 0.62); border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 14px; margin: 12px 0; }
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0; }
+    .compare-card { border-radius: 14px; border: 1px solid rgba(148, 163, 184, 0.18); background: rgba(15, 23, 42, 0.54); padding: 12px; min-width: 0; }
+    .compare-card.source { border-color: rgba(148, 163, 184, 0.28); }
+    .compare-card.adapted { border-color: rgba(249, 115, 22, 0.32); }
+    .compare-title { display: flex; justify-content: space-between; gap: 10px; align-items: center; color: #e5e7eb; font-weight: 700; margin-bottom: 8px; }
+    .compare-count { color: #9ca3af; font-size: 12px; font-weight: 400; }
+    .compare-card .content { margin: 0; min-height: 72px; }
+    .compare-note { color: #9ca3af; font-size: 13px; margin-top: 8px; }
+    .source-compare[open] summary { margin-bottom: 8px; }
     .preview { margin: 12px 0; padding: 12px; border-radius: 14px; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.18); }
     .preview-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
     .preview-title { font-weight: 700; color: #e5e7eb; }
@@ -61,7 +70,7 @@ const adminHtml = String.raw`<!doctype html>
     summary { cursor: pointer; color: #fdba74; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(3, 7, 18, 0.72); border-radius: 12px; padding: 12px; border: 1px solid rgba(148, 163, 184, 0.16); }
     .empty { text-align: center; color: #9ca3af; padding: 42px 16px; }
-    @media (max-width: 980px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } .bulk-actions button { width: 100%; } }
+    @media (max-width: 980px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } .bulk-actions button { width: 100%; } .compare-grid { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -206,6 +215,22 @@ const adminHtml = String.raw`<!doctype html>
       return Array.from(String(value || '')).length;
     }
 
+    function contentLengthLabel(value) {
+      var count = charCount(value);
+      return count + (count > 1 ? ' caractères' : ' caractère');
+    }
+
+    function sourceContentFor(job) {
+      var source = String(job.sourceContent || '').trim();
+      if (source) return source;
+      if (job.sourceEvent && job.sourceEvent.content) return String(job.sourceEvent.content || '').trim();
+      return String(job.adaptedContent || '').trim();
+    }
+
+    function contentDiffers(job) {
+      return sourceContentFor(job) !== String(job.adaptedContent || '').trim();
+    }
+
     function platformRule(platform) {
       if (platform === 'x') return { label: 'X', max: 140, note: 'Texte court. Limite éditoriale RelayPress : 140 caractères pour l’instant.' };
       if (platform === 'linkedin') return { label: 'LinkedIn', max: null, note: 'Format long accepté. Pense aux paragraphes courts et à une accroche claire.' };
@@ -256,6 +281,10 @@ const adminHtml = String.raw`<!doctype html>
     function updateLivePreview(card, platform, editor) {
       var target = card.querySelector('[data-preview="job"]');
       if (target) target.innerHTML = previewHtml(platform, editor.value);
+      var adaptedTarget = card.querySelector('[data-adapted-content="job"]');
+      if (adaptedTarget) adaptedTarget.textContent = editor.value.trim() || '—';
+      var adaptedCount = card.querySelector('[data-adapted-count="job"]');
+      if (adaptedCount) adaptedCount.textContent = contentLengthLabel(editor.value);
     }
 
     function selectedDraftPlatforms() {
@@ -356,6 +385,12 @@ const adminHtml = String.raw`<!doctype html>
       var runId = 'runs-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
       var editorId = 'editor-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
       var sourceLabel = job.sourceEventId || 'manuel';
+      var originalContent = sourceContentFor(job);
+      var adaptedContent = String(job.adaptedContent || '').trim();
+      var compareOpen = contentDiffers(job) ? ' open' : '';
+      var compareNote = contentDiffers(job)
+        ? 'Source et version adaptée diffèrent : vérifie que l’adaptation respecte bien l’intention originale.'
+        : 'Source et version adaptée sont identiques ou quasi identiques.';
       var html = '';
       html += '<div class="job-header"><div class="badges">';
       if (canArchive(job)) html += '<label class="select-job"><input type="checkbox" name="jobSelect" value="' + escapeHtml(job.id) + '" /> archiver</label>';
@@ -363,9 +398,13 @@ const adminHtml = String.raw`<!doctype html>
       html += '<span class="badge">' + escapeHtml(job.platform) + '</span>';
       html += '<span class="badge">' + escapeHtml(sourceLabel === 'manuel' ? 'manual' : 'nostr') + '</span>';
       html += '</div><div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div></div>';
-      html += '<div class="content">' + escapeHtml(job.adaptedContent || '') + '</div>';
-      if (canEdit(job)) html += '<textarea id="' + editorId + '">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
-      html += '<div data-preview="job">' + previewHtml(job.platform, job.adaptedContent || '') + '</div>';
+      html += '<details class="source-compare"' + compareOpen + '><summary>Comparer source originale / version adaptée</summary>';
+      html += '<div class="compare-grid">';
+      html += '<div class="compare-card source"><div class="compare-title"><span>Source originale</span><span class="compare-count">' + escapeHtml(contentLengthLabel(originalContent)) + '</span></div><div class="content">' + escapeHtml(originalContent || '—') + '</div></div>';
+      html += '<div class="compare-card adapted"><div class="compare-title"><span>Version adaptée</span><span class="compare-count" data-adapted-count="job">' + escapeHtml(contentLengthLabel(adaptedContent)) + '</span></div><div class="content" data-adapted-content="job">' + escapeHtml(adaptedContent || '—') + '</div></div>';
+      html += '</div><div class="compare-note">' + escapeHtml(compareNote) + '</div></details>';
+      if (canEdit(job)) html += '<textarea id="' + editorId + '">' + escapeHtml(adaptedContent) + '</textarea>';
+      html += '<div data-preview="job">' + previewHtml(job.platform, adaptedContent) + '</div>';
       html += '<div class="meta"><strong>Job:</strong> ' + escapeHtml(job.id) + '<br/><strong>Source:</strong> ' + escapeHtml(sourceLabel) + '<br/><strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/><strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—') + '</div>';
       html += '<div class="actions">';
       if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
