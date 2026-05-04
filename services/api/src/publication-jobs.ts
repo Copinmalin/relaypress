@@ -232,64 +232,72 @@ async function updatePublicationJobContent(id: string, content: string) {
 }
 
 export async function registerPublicationJobRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: PublicationJobsQuery }>("/publication-jobs", async (request) => {
-    const limit = parseLimit(request.query.limit);
-    const order = parseOrder(request.query.order);
-    const values: unknown[] = [];
-    const clauses: string[] = [];
+  app.get<{ Querystring: PublicationJobsQuery }>(
+    "/publication-jobs",
+    { preHandler: requireAdminToken },
+    async (request) => {
+      const limit = parseLimit(request.query.limit);
+      const order = parseOrder(request.query.order);
+      const values: unknown[] = [];
+      const clauses: string[] = [];
 
-    if (request.query.status) {
-      values.push(request.query.status);
-      clauses.push(`j.status = $${values.length}`);
-    } else if (request.query.view === "todo") {
-      clauses.push("j.status in ('pending', 'pending_review', 'failed')");
-    }
+      if (request.query.status) {
+        values.push(request.query.status);
+        clauses.push(`j.status = $${values.length}`);
+      } else if (request.query.view === "todo") {
+        clauses.push("j.status in ('pending', 'pending_review', 'failed')");
+      }
 
-    if (request.query.platform) {
-      values.push(request.query.platform);
-      clauses.push(`j.platform = $${values.length}`);
-    }
+      if (request.query.platform) {
+        values.push(request.query.platform);
+        clauses.push(`j.platform = $${values.length}`);
+      }
 
-    values.push(limit);
+      values.push(limit);
 
-    const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
-    const limitPlaceholder = `$${values.length}`;
+      const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
+      const limitPlaceholder = `$${values.length}`;
 
-    const result = await pool.query(
-      `
-        ${PUBLICATION_JOB_SELECT}
-        ${where}
-        order by j.created_at ${order}
-        limit ${limitPlaceholder}
-      `,
-      values,
-    );
+      const result = await pool.query(
+        `
+          ${PUBLICATION_JOB_SELECT}
+          ${where}
+          order by j.created_at ${order}
+          limit ${limitPlaceholder}
+        `,
+        values,
+      );
 
-    return {
-      count: result.rowCount,
-      order,
-      view: request.query.status ? null : request.query.view ?? null,
-      jobs: result.rows.map(rowToPublicationJob),
-    };
-  });
+      return {
+        count: result.rowCount,
+        order,
+        view: request.query.status ? null : request.query.view ?? null,
+        jobs: result.rows.map(rowToPublicationJob),
+      };
+    },
+  );
 
-  app.get<{ Querystring: Pick<PublicationJobsQuery, "order"> }>("/publication-jobs/pending", async (request) => {
-    const order = parseOrder(request.query.order);
-    const result = await pool.query(
-      `
-        ${PUBLICATION_JOB_SELECT}
-        where j.status in ('pending', 'pending_review')
-        order by j.created_at ${order}
-        limit 100
-      `,
-    );
+  app.get<{ Querystring: Pick<PublicationJobsQuery, "order"> }>(
+    "/publication-jobs/pending",
+    { preHandler: requireAdminToken },
+    async (request) => {
+      const order = parseOrder(request.query.order);
+      const result = await pool.query(
+        `
+          ${PUBLICATION_JOB_SELECT}
+          where j.status in ('pending', 'pending_review')
+          order by j.created_at ${order}
+          limit 100
+        `,
+      );
 
-    return {
-      count: result.rowCount,
-      order,
-      jobs: result.rows.map(rowToPublicationJob),
-    };
-  });
+      return {
+        count: result.rowCount,
+        order,
+        jobs: result.rows.map(rowToPublicationJob),
+      };
+    },
+  );
 
   app.post<{ Body: ManualDraftBody }>(
     "/publication-jobs/manual-draft",
@@ -318,18 +326,23 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     },
   );
 
-  app.get<{ Params: PublicationJobParams }>("/publication-jobs/:id", async (request, reply) => {
-    const job = await findPublicationJobById(request.params.id);
+  app.get<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await findPublicationJobById(request.params.id);
 
-    if (!job) {
-      return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
-    }
+      if (!job) {
+        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+      }
 
-    return { job };
-  });
+      return { job };
+    },
+  );
 
   app.get<{ Params: PublicationJobParams; Querystring: Pick<PublicationJobsQuery, "order"> }>(
     "/publication-jobs/:id/runs",
+    { preHandler: requireAdminToken },
     async (request, reply) => {
       const job = await findPublicationJobById(request.params.id);
 
