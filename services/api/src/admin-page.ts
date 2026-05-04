@@ -15,8 +15,9 @@ const adminHtml = String.raw`<!doctype html>
     .panel, .job { background: rgba(17, 24, 39, 0.86); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.28); }
     .panel { padding: 16px; margin: 18px 0; }
     .controls { display: grid; grid-template-columns: 1fr repeat(4, auto); gap: 10px; align-items: center; }
-    input, select, button { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(3, 7, 18, 0.82); color: #f9fafb; padding: 10px 12px; font: inherit; }
+    input, select, button, textarea { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(3, 7, 18, 0.82); color: #f9fafb; padding: 10px 12px; font: inherit; }
     input[type="password"] { width: 100%; box-sizing: border-box; }
+    textarea { width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical; line-height: 1.45; margin-top: 12px; }
     button { cursor: pointer; }
     button:hover { border-color: #f97316; }
     button.primary { background: #f97316; color: #111827; border-color: #f97316; font-weight: 700; }
@@ -47,7 +48,7 @@ const adminHtml = String.raw`<!doctype html>
 <body>
   <main>
     <h1>RelayPress Admin</h1>
-    <div class="subtitle">Valider, rejeter et auditer les jobs issus de Nostr.</div>
+    <div class="subtitle">Valider, rejeter, éditer et auditer les jobs issus de Nostr.</div>
 
     <section class="panel">
       <div class="controls">
@@ -95,14 +96,12 @@ const adminHtml = String.raw`<!doctype html>
 
     tokenInput.value = localStorage.getItem('relaypress.adminToken') || '';
 
-    function hasAdminToken() {
-      return tokenInput.value.trim().length > 0;
-    }
+    function hasAdminToken() { return tokenInput.value.trim().length > 0; }
 
     function updateTokenHint() {
       tokenHint.textContent = hasAdminToken()
-        ? 'Token présent : les actions Approuver/Rejeter peuvent être envoyées.'
-        : 'Token absent : la lecture fonctionne, mais Approuver/Rejeter échoueront.';
+        ? 'Token présent : les actions éditoriales peuvent être envoyées.'
+        : 'Token absent : la lecture fonctionne, mais Éditer/Approuver/Rejeter échoueront.';
     }
 
     tokenInput.addEventListener('input', function () {
@@ -110,9 +109,7 @@ const adminHtml = String.raw`<!doctype html>
       updateTokenHint();
     });
 
-    function jobUrl(id, suffix) {
-      return '/publication-jobs/' + encodeURIComponent(id) + (suffix || '');
-    }
+    function jobUrl(id, suffix) { return '/publication-jobs/' + encodeURIComponent(id) + (suffix || ''); }
 
     function escapeHtml(value) {
       return String(value == null ? '' : value)
@@ -128,22 +125,18 @@ const adminHtml = String.raw`<!doctype html>
       return new Date(value).toLocaleString('fr-FR');
     }
 
-    function canApprove(job) {
-      return ['pending', 'pending_review'].includes(job.status);
-    }
-
-    function canReject(job) {
-      return ['pending', 'pending_review', 'approved'].includes(job.status);
-    }
+    function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
+    function canReject(job) { return ['pending', 'pending_review', 'approved'].includes(job.status); }
+    function canEdit(job) { return ['pending', 'pending_review', 'rejected', 'failed'].includes(job.status); }
 
     function actionHint(job) {
       if (job.status === 'published') return 'Déjà publié : plus aucune action éditoriale disponible.';
       if (job.status === 'publishing') return 'Publication en cours côté worker.';
-      if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick.';
-      if (job.status === 'rejected') return 'Rejeté.';
-      if (job.status === 'failed') return 'Échec : analyse ou retry à prévoir plus tard.';
-      if (!hasAdminToken()) return 'Ajoute le token admin pour pouvoir approuver ou rejeter.';
-      return 'Action disponible.';
+      if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick. Édition verrouillée.';
+      if (job.status === 'rejected') return 'Rejeté : tu peux modifier le texte pour le remettre en pending_review.';
+      if (job.status === 'failed') return 'Échec : tu peux modifier le texte pour le remettre en pending_review.';
+      if (!hasAdminToken()) return 'Ajoute le token admin pour éditer, approuver ou rejeter.';
+      return 'Édition et validation disponibles.';
     }
 
     async function api(path, options) {
@@ -154,29 +147,24 @@ const adminHtml = String.raw`<!doctype html>
         if (!token) throw new Error('ADMIN_API_TOKEN manquant dans l’interface');
         headers.set('Authorization', 'Bearer ' + token);
       }
-      if (options.body && !headers.has('Content-Type')) {
-        headers.set('Content-Type', 'application/json');
-      }
+      if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
       var response = await fetch(path, Object.assign({}, options, { headers: headers }));
       var payload = await response.json().catch(function () { return {}; });
-      if (!response.ok) {
-        throw new Error(payload.message || payload.error || ('HTTP ' + response.status));
-      }
+      if (!response.ok) throw new Error(payload.message || payload.error || ('HTTP ' + response.status));
       return payload;
     }
 
-    async function approveJob(id) {
-      await api(jobUrl(id, '/approve'), { method: 'POST' });
+    async function updateContent(id, content) {
+      await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) });
       await loadJobs();
     }
+
+    async function approveJob(id) { await api(jobUrl(id, '/approve'), { method: 'POST' }); await loadJobs(); }
 
     async function rejectJob(id) {
       var reason = prompt('Raison du rejet ?', 'À retravailler avant publication');
       if (reason === null) return;
-      await api(jobUrl(id, '/reject'), {
-        method: 'POST',
-        body: JSON.stringify({ reason: reason })
-      });
+      await api(jobUrl(id, '/reject'), { method: 'POST', body: JSON.stringify({ reason: reason }) });
       await loadJobs();
     }
 
@@ -185,50 +173,51 @@ const adminHtml = String.raw`<!doctype html>
       try {
         var payload = await api(jobUrl(id, '/runs?order=' + encodeURIComponent(orderInput.value)));
         target.textContent = JSON.stringify(payload.runs, null, 2);
-      } catch (error) {
-        target.textContent = 'Erreur: ' + error.message;
-      }
+      } catch (error) { target.textContent = 'Erreur: ' + error.message; }
     }
 
     function renderJob(job) {
       var card = document.createElement('article');
       card.className = 'job';
       var runId = 'runs-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
+      var editorId = 'editor-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
       var html = '';
-      html += '<div class="job-header">';
-      html += '<div class="badges">';
+      html += '<div class="job-header"><div class="badges">';
       html += '<span class="badge ' + escapeHtml(job.status) + '">' + escapeHtml(job.status) + '</span>';
       html += '<span class="badge">' + escapeHtml(job.platform) + '</span>';
-      html += '</div>';
-      html += '<div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div>';
-      html += '</div>';
+      html += '</div><div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div></div>';
       html += '<div class="content">' + escapeHtml(job.adaptedContent || '') + '</div>';
+      if (canEdit(job)) {
+        html += '<textarea id="' + editorId + '" data-role="editor">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
+      }
       html += '<div class="meta">';
       html += '<strong>Job:</strong> ' + escapeHtml(job.id) + '<br/>';
       html += '<strong>Source:</strong> ' + escapeHtml(job.sourceEventId) + '<br/>';
       html += '<strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/>';
       html += '<strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—');
-      html += '</div>';
-      html += '<div class="actions">';
+      html += '</div><div class="actions">';
+      if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
       if (canApprove(job)) html += '<button class="primary" data-action="approve">Approuver</button>';
       if (canReject(job)) html += '<button class="danger" data-action="reject">Rejeter</button>';
-      html += '<button data-action="runs">Voir les runs</button>';
-      html += '<button data-action="copy">Copier ID</button>';
-      html += '</div>';
+      html += '<button data-action="runs">Voir les runs</button><button data-action="copy">Copier ID</button></div>';
       html += '<div class="hint">' + escapeHtml(actionHint(job)) + '</div>';
       html += '<details><summary>Détails source</summary><pre>' + escapeHtml(JSON.stringify(job.sourceEvent, null, 2)) + '</pre></details>';
       html += '<details><summary>Historique d’exécution</summary><pre id="' + runId + '">Clique sur “Voir les runs”.</pre></details>';
       card.innerHTML = html;
 
-      var approveButton = card.querySelector('[data-action="approve"]');
-      if (approveButton) approveButton.addEventListener('click', async function () {
-        try { await approveJob(job.id); } catch (error) { alert(error.message); }
+      var saveButton = card.querySelector('[data-action="save"]');
+      if (saveButton) saveButton.addEventListener('click', async function () {
+        try {
+          var editor = card.querySelector('#' + CSS.escape(editorId));
+          await updateContent(job.id, editor.value);
+        } catch (error) { alert(error.message); }
       });
 
+      var approveButton = card.querySelector('[data-action="approve"]');
+      if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
+
       var rejectButton = card.querySelector('[data-action="reject"]');
-      if (rejectButton) rejectButton.addEventListener('click', async function () {
-        try { await rejectJob(job.id); } catch (error) { alert(error.message); }
-      });
+      if (rejectButton) rejectButton.addEventListener('click', async function () { try { await rejectJob(job.id); } catch (error) { alert(error.message); } });
 
       var runsButton = card.querySelector('[data-action="runs"]');
       if (runsButton) runsButton.addEventListener('click', async function () {
@@ -251,31 +240,21 @@ const adminHtml = String.raw`<!doctype html>
       params.set('limit', '100');
       if (statusInput.value) params.set('status', statusInput.value);
       if (platformInput.value) params.set('platform', platformInput.value);
-
       updateTokenHint();
       statusLine.textContent = 'Chargement des jobs…';
       jobsEl.innerHTML = '';
-
       try {
         var payload = await api('/publication-jobs?' + params.toString());
         statusLine.textContent = payload.count + ' job(s), ordre ' + payload.order + '.';
-        if (!payload.jobs.length) {
-          jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>';
-          return;
-        }
-        for (var i = 0; i < payload.jobs.length; i += 1) {
-          jobsEl.appendChild(renderJob(payload.jobs[i]));
-        }
-      } catch (error) {
-        statusLine.textContent = 'Erreur: ' + error.message;
-      }
+        if (!payload.jobs.length) { jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>'; return; }
+        for (var i = 0; i < payload.jobs.length; i += 1) jobsEl.appendChild(renderJob(payload.jobs[i]));
+      } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; }
     }
 
     refreshButton.addEventListener('click', loadJobs);
     statusInput.addEventListener('change', loadJobs);
     platformInput.addEventListener('change', loadJobs);
     orderInput.addEventListener('change', loadJobs);
-
     updateTokenHint();
     loadJobs();
   </script>
