@@ -27,6 +27,7 @@ export const publicationJobs = pgTable(
     sourceEventId: varchar("source_event_id", { length: 128 }).references(() => nostrEvents.id),
     platform: varchar("platform", { length: 64 }).notNull(),
     status: varchar("status", { length: 64 }).notNull().default("drafted"),
+    sourceContent: text("source_content"),
     adaptedContent: text("adapted_content"),
     externalPostId: varchar("external_post_id", { length: 256 }),
     errorMessage: text("error_message"),
