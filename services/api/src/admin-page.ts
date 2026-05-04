@@ -262,18 +262,20 @@ const adminHtml = String.raw`<!doctype html>
       return Array.from(document.querySelectorAll('input[name="draftPlatform"]:checked')).map(function (input) { return input.value; });
     }
 
-    function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
-    function canReject(job) { return ['pending', 'pending_review', 'approved'].includes(job.status); }
-    function canEdit(job) { return ['pending', 'pending_review', 'rejected', 'failed'].includes(job.status); }
+    function canApprove(job) { return ['pending', 'pending_review'].includes(job.status) && !job.externalPostId && !job.publishedAt; }
+    function canReject(job) { return ['pending', 'pending_review', 'approved'].includes(job.status) && !job.externalPostId && !job.publishedAt; }
+    function canEdit(job) { return ['pending', 'pending_review', 'rejected', 'failed'].includes(job.status) && !job.externalPostId && !job.publishedAt; }
+    function canRetry(job) { return job.status === 'failed' && !job.externalPostId && !job.publishedAt; }
+    function canResetReview(job) { return ['rejected', 'failed'].includes(job.status) && !job.externalPostId && !job.publishedAt; }
     function canArchive(job) { return ['published', 'rejected', 'failed'].includes(job.status); }
 
     function actionHint(job) {
       if (job.status === 'archived') return 'Archivé : conservé pour audit, masqué des vues actives.';
-      if (job.status === 'published') return 'Publié : tu peux l’archiver pour nettoyer la vue.';
+      if (job.status === 'published') return 'Publié : protégé contre la republication. Tu peux l’archiver pour nettoyer la vue.';
       if (job.status === 'publishing') return 'Publication en cours côté worker.';
       if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick. Édition verrouillée.';
-      if (job.status === 'rejected') return 'Rejeté : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
-      if (job.status === 'failed') return 'Échec : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
+      if (job.status === 'rejected') return 'Rejeté : tu peux le remettre en review après correction, ou l’archiver.';
+      if (job.status === 'failed') return 'Échec : tu peux retry directement ou remettre en review pour corriger avant nouvelle tentative.';
       if (!hasAdminToken()) return 'Ajoute le token admin pour éditer, approuver, rejeter ou archiver.';
       return 'Édition et validation disponibles.';
     }
@@ -310,6 +312,8 @@ const adminHtml = String.raw`<!doctype html>
     async function updateContent(id, content) { await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) }); await loadJobs(); }
     async function approveJob(id) { await api(jobUrl(id, '/approve'), { method: 'POST' }); await loadJobs(); }
     async function archiveJob(id) { await api(jobUrl(id, '/archive'), { method: 'POST' }); await loadJobs(); }
+    async function retryJob(id) { await api(jobUrl(id, '/retry'), { method: 'POST' }); await loadJobs(); }
+    async function resetReviewJob(id) { await api(jobUrl(id, '/reset-review'), { method: 'POST' }); await loadJobs(); }
 
     async function archiveSelectedJobs() {
       var ids = selectedJobIds();
@@ -366,6 +370,8 @@ const adminHtml = String.raw`<!doctype html>
       html += '<div class="actions">';
       if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
       if (canApprove(job)) html += '<button class="primary" data-action="approve">Approuver</button>';
+      if (canRetry(job)) html += '<button class="primary" data-action="retry">Retry</button>';
+      if (canResetReview(job)) html += '<button data-action="reset-review">Remettre en review</button>';
       if (canReject(job)) html += '<button class="danger" data-action="reject">Rejeter</button>';
       if (canArchive(job)) html += '<button data-action="archive">Archiver</button>';
       html += '<button data-action="runs">Voir les runs</button><button data-action="copy">Copier ID</button></div>';
@@ -382,6 +388,16 @@ const adminHtml = String.raw`<!doctype html>
       if (saveButton) saveButton.addEventListener('click', async function () { try { await updateContent(job.id, editor.value); } catch (error) { alert(error.message); } });
       var approveButton = card.querySelector('[data-action="approve"]');
       if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
+      var retryButton = card.querySelector('[data-action="retry"]');
+      if (retryButton) retryButton.addEventListener('click', async function () {
+        if (!confirm('Relancer ce job en publication ?')) return;
+        try { await retryJob(job.id); } catch (error) { alert(error.message); }
+      });
+      var resetButton = card.querySelector('[data-action="reset-review"]');
+      if (resetButton) resetButton.addEventListener('click', async function () {
+        if (!confirm('Remettre ce job en pending_review pour correction ?')) return;
+        try { await resetReviewJob(job.id); } catch (error) { alert(error.message); }
+      });
       var rejectButton = card.querySelector('[data-action="reject"]');
       if (rejectButton) rejectButton.addEventListener('click', async function () { try { await rejectJob(job.id); } catch (error) { alert(error.message); } });
       var archiveButton = card.querySelector('[data-action="archive"]');
