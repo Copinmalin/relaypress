@@ -44,6 +44,17 @@ const adminHtml = String.raw`<!doctype html>
     .rejected, .failed { border-color: #ef4444; color: #fecaca; }
     .archived { border-color: #94a3b8; color: #cbd5e1; }
     .content { white-space: pre-wrap; line-height: 1.45; padding: 14px; background: rgba(3, 7, 18, 0.62); border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 14px; margin: 12px 0; }
+    .preview { margin: 12px 0; padding: 12px; border-radius: 14px; background: rgba(15, 23, 42, 0.72); border: 1px solid rgba(148, 163, 184, 0.18); }
+    .preview-head { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+    .preview-title { font-weight: 700; color: #e5e7eb; }
+    .preview-count { color: #cbd5e1; font-size: 13px; }
+    .preview.ok { border-color: rgba(34, 197, 94, 0.42); }
+    .preview.warn { border-color: rgba(250, 204, 21, 0.52); }
+    .preview.error { border-color: rgba(239, 68, 68, 0.58); }
+    .preview-message { margin: 5px 0 0; color: #cbd5e1; font-size: 13px; }
+    .preview.warn .preview-message { color: #fde68a; }
+    .preview.error .preview-message { color: #fecaca; }
+    .preview-body { white-space: pre-wrap; border-radius: 12px; margin-top: 10px; padding: 12px; background: rgba(3, 7, 18, 0.55); color: #f9fafb; line-height: 1.45; }
     .meta { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
     .actions { margin-top: 12px; }
     details { margin-top: 12px; }
@@ -191,6 +202,62 @@ const adminHtml = String.raw`<!doctype html>
       return new Date(value).toLocaleString('fr-FR');
     }
 
+    function charCount(value) {
+      return Array.from(String(value || '')).length;
+    }
+
+    function platformRule(platform) {
+      if (platform === 'x') return { label: 'X', max: 140, note: 'Texte court. Limite éditoriale RelayPress : 140 caractères pour l’instant.' };
+      if (platform === 'linkedin') return { label: 'LinkedIn', max: null, note: 'Format long accepté. Pense aux paragraphes courts et à une accroche claire.' };
+      if (platform === 'facebook') return { label: 'Facebook', max: null, note: 'Texte conversationnel accepté. À adapter plus tard selon audience.' };
+      if (platform === 'instagram') return { label: 'Instagram', max: null, note: 'Caption seulement pour l’instant. Média obligatoire à traiter plus tard.' };
+      return { label: platform || 'Plateforme', max: null, note: 'Règle plateforme non définie.' };
+    }
+
+    function previewState(platform, content) {
+      var rule = platformRule(platform);
+      var text = String(content || '').trim();
+      var length = charCount(text);
+      var messages = [];
+      var level = 'ok';
+      if (!text) {
+        level = 'error';
+        messages.push('Contenu vide : approbation déconseillée.');
+      }
+      if (text.indexOf('/publish') !== -1 || text.indexOf('#publish') !== -1 || text.indexOf('#relaypress') !== -1) {
+        if (level !== 'error') level = 'warn';
+        messages.push('Commande ou tag de routage encore visible dans le contenu. À nettoyer avant publication réelle.');
+      }
+      if (rule.max !== null && length > rule.max) {
+        if (level !== 'error') level = 'warn';
+        messages.push('Dépasse la limite éditoriale ' + rule.label + ' : ' + length + ' / ' + rule.max + ' caractères.');
+      }
+      if (platform === 'instagram') {
+        if (level !== 'error') level = 'warn';
+        messages.push('Instagram : média non géré pour le moment, caption uniquement.');
+      }
+      if (!messages.length) messages.push('OK pour validation éditoriale mock.');
+      return { rule: rule, length: length, level: level, messages: messages };
+    }
+
+    function previewHtml(platform, content) {
+      var state = previewState(platform, content);
+      var limitLabel = state.rule.max === null ? String(state.length) + ' caractères' : String(state.length) + ' / ' + String(state.rule.max) + ' caractères';
+      var html = '';
+      html += '<div class="preview ' + escapeHtml(state.level) + '">';
+      html += '<div class="preview-head"><span class="preview-title">Prévisualisation ' + escapeHtml(state.rule.label) + '</span><span class="preview-count">' + escapeHtml(limitLabel) + '</span></div>';
+      html += '<div class="hint">' + escapeHtml(state.rule.note) + '</div>';
+      for (var i = 0; i < state.messages.length; i += 1) html += '<div class="preview-message">' + escapeHtml(state.messages[i]) + '</div>';
+      html += '<div class="preview-body">' + escapeHtml(String(content || '').trim() || '—') + '</div>';
+      html += '</div>';
+      return html;
+    }
+
+    function updateLivePreview(card, platform, editor) {
+      var target = card.querySelector('[data-preview="job"]');
+      if (target) target.innerHTML = previewHtml(platform, editor.value);
+    }
+
     function selectedDraftPlatforms() {
       return Array.from(document.querySelectorAll('input[name="draftPlatform"]:checked')).map(function (input) { return input.value; });
     }
@@ -294,6 +361,7 @@ const adminHtml = String.raw`<!doctype html>
       html += '</div><div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div></div>';
       html += '<div class="content">' + escapeHtml(job.adaptedContent || '') + '</div>';
       if (canEdit(job)) html += '<textarea id="' + editorId + '">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
+      html += '<div data-preview="job">' + previewHtml(job.platform, job.adaptedContent || '') + '</div>';
       html += '<div class="meta"><strong>Job:</strong> ' + escapeHtml(job.id) + '<br/><strong>Source:</strong> ' + escapeHtml(sourceLabel) + '<br/><strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/><strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—') + '</div>';
       html += '<div class="actions">';
       if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
@@ -308,8 +376,10 @@ const adminHtml = String.raw`<!doctype html>
 
       var selectInput = card.querySelector('input[name="jobSelect"]');
       if (selectInput) selectInput.addEventListener('change', updateSelectionStatus);
+      var editor = card.querySelector('#' + CSS.escape(editorId));
+      if (editor) editor.addEventListener('input', function () { updateLivePreview(card, job.platform, editor); });
       var saveButton = card.querySelector('[data-action="save"]');
-      if (saveButton) saveButton.addEventListener('click', async function () { try { var editor = card.querySelector('#' + CSS.escape(editorId)); await updateContent(job.id, editor.value); } catch (error) { alert(error.message); } });
+      if (saveButton) saveButton.addEventListener('click', async function () { try { await updateContent(job.id, editor.value); } catch (error) { alert(error.message); } });
       var approveButton = card.querySelector('[data-action="approve"]');
       if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
       var rejectButton = card.querySelector('[data-action="reject"]');
