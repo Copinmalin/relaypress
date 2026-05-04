@@ -11,7 +11,7 @@ const adminHtml = String.raw`<!doctype html>
     body { margin: 0; padding: 24px; background: radial-gradient(circle at top left, #1f2937, #030712 55%); }
     main { max-width: 1180px; margin: 0 auto; }
     h1 { margin: 0; font-size: 32px; letter-spacing: -0.04em; }
-    .subtitle, .status-line, .meta { color: #9ca3af; }
+    .subtitle, .status-line, .meta, .hint { color: #9ca3af; }
     .panel, .job { background: rgba(17, 24, 39, 0.86); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.28); }
     .panel { padding: 16px; margin: 18px 0; }
     .controls { display: grid; grid-template-columns: 1fr repeat(4, auto); gap: 10px; align-items: center; }
@@ -21,7 +21,10 @@ const adminHtml = String.raw`<!doctype html>
     button:hover { border-color: #f97316; }
     button.primary { background: #f97316; color: #111827; border-color: #f97316; font-weight: 700; }
     button.danger:hover { border-color: #ef4444; }
+    button[disabled] { cursor: not-allowed; opacity: 0.45; }
+    button[disabled]:hover { border-color: rgba(148, 163, 184, 0.32); }
     .status-line { margin-top: 12px; font-size: 14px; }
+    .hint { margin-top: 8px; font-size: 13px; }
     .jobs { display: grid; gap: 14px; }
     .job { padding: 16px; }
     .job-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
@@ -74,6 +77,7 @@ const adminHtml = String.raw`<!doctype html>
         <button class="primary" id="refresh">Rafraîchir</button>
       </div>
       <div class="status-line" id="statusLine">Initialisation…</div>
+      <div class="hint" id="tokenHint"></div>
     </section>
 
     <section class="jobs" id="jobs"></section>
@@ -87,10 +91,23 @@ const adminHtml = String.raw`<!doctype html>
     var refreshButton = document.querySelector('#refresh');
     var jobsEl = document.querySelector('#jobs');
     var statusLine = document.querySelector('#statusLine');
+    var tokenHint = document.querySelector('#tokenHint');
 
     tokenInput.value = localStorage.getItem('relaypress.adminToken') || '';
+
+    function hasAdminToken() {
+      return tokenInput.value.trim().length > 0;
+    }
+
+    function updateTokenHint() {
+      tokenHint.textContent = hasAdminToken()
+        ? 'Token présent : les actions Approuver/Rejeter peuvent être envoyées.'
+        : 'Token absent : la lecture fonctionne, mais Approuver/Rejeter échoueront.';
+    }
+
     tokenInput.addEventListener('input', function () {
       localStorage.setItem('relaypress.adminToken', tokenInput.value.trim());
+      updateTokenHint();
     });
 
     function jobUrl(id, suffix) {
@@ -119,12 +136,23 @@ const adminHtml = String.raw`<!doctype html>
       return ['pending', 'pending_review', 'approved'].includes(job.status);
     }
 
+    function actionHint(job) {
+      if (job.status === 'published') return 'Déjà publié : plus aucune action éditoriale disponible.';
+      if (job.status === 'publishing') return 'Publication en cours côté worker.';
+      if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick.';
+      if (job.status === 'rejected') return 'Rejeté.';
+      if (job.status === 'failed') return 'Échec : analyse ou retry à prévoir plus tard.';
+      if (!hasAdminToken()) return 'Ajoute le token admin pour pouvoir approuver ou rejeter.';
+      return 'Action disponible.';
+    }
+
     async function api(path, options) {
       options = options || {};
       var headers = new Headers(options.headers || {});
       if (options.method && options.method !== 'GET') {
         var token = tokenInput.value.trim();
-        if (token) headers.set('Authorization', 'Bearer ' + token);
+        if (!token) throw new Error('ADMIN_API_TOKEN manquant dans l’interface');
+        headers.set('Authorization', 'Bearer ' + token);
       }
       if (options.body && !headers.has('Content-Type')) {
         headers.set('Content-Type', 'application/json');
@@ -187,6 +215,7 @@ const adminHtml = String.raw`<!doctype html>
       html += '<button data-action="runs">Voir les runs</button>';
       html += '<button data-action="copy">Copier ID</button>';
       html += '</div>';
+      html += '<div class="hint">' + escapeHtml(actionHint(job)) + '</div>';
       html += '<details><summary>Détails source</summary><pre>' + escapeHtml(JSON.stringify(job.sourceEvent, null, 2)) + '</pre></details>';
       html += '<details><summary>Historique d’exécution</summary><pre id="' + runId + '">Clique sur “Voir les runs”.</pre></details>';
       card.innerHTML = html;
@@ -223,6 +252,7 @@ const adminHtml = String.raw`<!doctype html>
       if (statusInput.value) params.set('status', statusInput.value);
       if (platformInput.value) params.set('platform', platformInput.value);
 
+      updateTokenHint();
       statusLine.textContent = 'Chargement des jobs…';
       jobsEl.innerHTML = '';
 
@@ -246,6 +276,7 @@ const adminHtml = String.raw`<!doctype html>
     platformInput.addEventListener('change', loadJobs);
     orderInput.addEventListener('change', loadJobs);
 
+    updateTokenHint();
     loadJobs();
   </script>
 </body>
