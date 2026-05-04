@@ -186,23 +186,87 @@ async function createManualDraftJobs(content: string, platforms: string[]) {
   return findPublicationJobsByIds(jobIds);
 }
 
-async function updatePublicationJobStatus(
-  id: string,
-  status: Extract<PublicationJobStatus, "approved" | "rejected" | "archived">,
-  errorMessage: string | null = null,
-) {
-  await pool.query(
+async function approvePublicationJob(id: string) {
+  const result = await pool.query(
     `
       update publication_jobs
       set
-        status = $2,
-        error_message = $3,
+        status = 'approved',
+        error_message = null,
         updated_at = now()
       where id = $1
+        and status in ('pending', 'pending_review')
+        and external_post_id is null
+        and published_at is null
+      returning id
     `,
-    [id, status, errorMessage],
+    [id],
   );
 
+  if (result.rowCount === 0) return null;
+  return findPublicationJobById(id);
+}
+
+async function rejectPublicationJob(id: string, reason: string) {
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        status = 'rejected',
+        error_message = $2,
+        updated_at = now()
+      where id = $1
+        and status in ('pending', 'pending_review', 'approved')
+        and external_post_id is null
+        and published_at is null
+      returning id
+    `,
+    [id, reason],
+  );
+
+  if (result.rowCount === 0) return null;
+  return findPublicationJobById(id);
+}
+
+async function retryPublicationJob(id: string) {
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        status = 'approved',
+        error_message = null,
+        updated_at = now()
+      where id = $1
+        and status = 'failed'
+        and external_post_id is null
+        and published_at is null
+      returning id
+    `,
+    [id],
+  );
+
+  if (result.rowCount === 0) return null;
+  return findPublicationJobById(id);
+}
+
+async function resetPublicationJobToReview(id: string) {
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        status = 'pending_review',
+        error_message = null,
+        updated_at = now()
+      where id = $1
+        and status in ('rejected', 'failed')
+        and external_post_id is null
+        and published_at is null
+      returning id
+    `,
+    [id],
+  );
+
+  if (result.rowCount === 0) return null;
   return findPublicationJobById(id);
 }
 
@@ -241,6 +305,8 @@ async function updatePublicationJobContent(id: string, content: string) {
         updated_at = now()
       where id = $1
         and status in ('pending', 'pending_review', 'rejected', 'failed')
+        and external_post_id is null
+        and published_at is null
       returning id
     `,
     [id, content],
@@ -420,7 +486,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       if (!job) {
         return reply.code(409).send({
           error: "content_not_editable",
-          message: "Only pending, pending_review, rejected or failed jobs can be edited",
+          message: "Only unpublished pending, pending_review, rejected or failed jobs can be edited",
         });
       }
 
@@ -432,10 +498,13 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     "/publication-jobs/:id/approve",
     { preHandler: requireAdminToken },
     async (request, reply) => {
-      const job = await updatePublicationJobStatus(request.params.id, "approved");
+      const job = await approvePublicationJob(request.params.id);
 
       if (!job) {
-        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+        return reply.code(409).send({
+          error: "job_not_approvable",
+          message: "Only unpublished pending or pending_review jobs can be approved",
+        });
       }
 
       return { job };
@@ -447,10 +516,47 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     { preHandler: requireAdminToken },
     async (request, reply) => {
       const reason = request.body?.reason?.trim() || "Rejected from API";
-      const job = await updatePublicationJobStatus(request.params.id, "rejected", reason);
+      const job = await rejectPublicationJob(request.params.id, reason);
 
       if (!job) {
-        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+        return reply.code(409).send({
+          error: "job_not_rejectable",
+          message: "Only unpublished pending, pending_review or approved jobs can be rejected",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/retry",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await retryPublicationJob(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "job_not_retryable",
+          message: "Only unpublished failed jobs can be retried",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/reset-review",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await resetPublicationJobToReview(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "job_not_resettable",
+          message: "Only unpublished rejected or failed jobs can be reset to pending_review",
+        });
       }
 
       return { job };
