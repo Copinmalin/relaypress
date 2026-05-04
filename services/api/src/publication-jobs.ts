@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
+import { adaptPublicationContent, type PublicationTarget } from "./content-adapter.js";
 import { pool } from "./db.js";
 
 type PublicationJobStatus =
@@ -50,6 +51,7 @@ const PUBLICATION_JOB_SELECT = `
     j.source_event_id,
     j.platform,
     j.status,
+    j.source_content,
     j.adapted_content,
     j.external_post_id,
     j.error_message,
@@ -78,9 +80,9 @@ function parseOrder(value: string | undefined): SortOrder {
   return value === "asc" ? "asc" : "desc";
 }
 
-function parseManualPlatforms(platforms: string[] | undefined): string[] {
+function parseManualPlatforms(platforms: string[] | undefined): PublicationTarget[] {
   const normalized = [...new Set((platforms ?? []).map((platform) => platform.trim().toLowerCase()))];
-  return normalized.filter((platform) => SUPPORTED_MANUAL_PLATFORMS.has(platform));
+  return normalized.filter((platform): platform is PublicationTarget => SUPPORTED_MANUAL_PLATFORMS.has(platform));
 }
 
 function rowToPublicationJob(row: Record<string, unknown>) {
@@ -89,6 +91,7 @@ function rowToPublicationJob(row: Record<string, unknown>) {
     sourceEventId: row.source_event_id,
     platform: row.platform,
     status: row.status,
+    sourceContent: row.source_content,
     adaptedContent: row.adapted_content,
     externalPostId: row.external_post_id,
     errorMessage: row.error_message,
@@ -152,7 +155,7 @@ async function findPublicationJobsByIds(ids: string[]) {
   return result.rows.map(rowToPublicationJob);
 }
 
-async function createManualDraftJobs(content: string, platforms: string[]) {
+async function createManualDraftJobs(content: string, platforms: PublicationTarget[]) {
   const draftId = randomUUID();
   const jobIds = platforms.map((platform) => `manual:${draftId}:${platform}`);
 
@@ -160,6 +163,7 @@ async function createManualDraftJobs(content: string, platforms: string[]) {
 
   try {
     for (const platform of platforms) {
+      const adapted = adaptPublicationContent(content, platform);
       await pool.query(
         `
           insert into publication_jobs (
@@ -167,13 +171,20 @@ async function createManualDraftJobs(content: string, platforms: string[]) {
             source_event_id,
             platform,
             status,
+            source_content,
             adapted_content,
             error_message,
             created_at,
             updated_at
-          ) values ($1, null, $2, 'pending_review', $3, null, now(), now())
+          ) values ($1, null, $2, 'pending_review', $3, $4, $5, now(), now())
         `,
-        [`manual:${draftId}:${platform}`, platform, content],
+        [
+          `manual:${draftId}:${platform}`,
+          platform,
+          adapted.sourceContent,
+          adapted.content,
+          adapted.warnings.length > 0 ? adapted.warnings.join(",") : null,
+        ],
       );
     }
 
