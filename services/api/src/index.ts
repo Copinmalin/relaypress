@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { registerAdminPage } from "./admin-page.js";
 import { closeDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 
@@ -8,6 +9,7 @@ const port = Number(process.env.PORT ?? 3000);
 
 await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
+await registerAdminPage(app);
 
 app.get("/health", async () => ({
   status: "ok",
@@ -18,6 +20,7 @@ app.get("/health", async () => ({
 app.get("/", async () => ({
   name: "RelayPress API",
   description: "Sovereign editorial orchestration powered by Nostr",
+  admin: "/admin",
 }));
 
 const shutdown = async () => {
