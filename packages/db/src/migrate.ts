@@ -23,6 +23,7 @@ export async function migrate(pool: Pool): Promise<void> {
       source_event_id varchar(128) references nostr_events(id),
       platform varchar(64) not null,
       status varchar(64) not null default 'drafted',
+      source_content text,
       adapted_content text,
       external_post_id varchar(256),
       error_message text,
@@ -31,6 +32,12 @@ export async function migrate(pool: Pool): Promise<void> {
       created_at timestamptz not null default now(),
       updated_at timestamptz not null default now()
     );
+
+    alter table publication_jobs add column if not exists source_content text;
+
+    update publication_jobs
+    set source_content = adapted_content
+    where source_content is null and adapted_content is not null;
 
     create index if not exists publication_jobs_source_event_idx on publication_jobs(source_event_id);
     create index if not exists publication_jobs_platform_idx on publication_jobs(platform);
