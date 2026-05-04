@@ -7,6 +7,7 @@ type PublicationJobStatus =
   | "pending_review"
   | "drafted"
   | "approved"
+  | "publishing"
   | "rejected"
   | "published"
   | "failed";
@@ -26,6 +27,10 @@ type PublicationJobParams = {
 
 type RejectBody = {
   reason?: string;
+};
+
+type UpdateContentBody = {
+  content?: string;
 };
 
 const PUBLICATION_JOB_SELECT = `
@@ -136,6 +141,32 @@ async function updatePublicationJobStatus(
   return findPublicationJobById(id);
 }
 
+async function updatePublicationJobContent(id: string, content: string) {
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        adapted_content = $2,
+        status = case
+          when status in ('rejected', 'failed') then 'pending_review'
+          else status
+        end,
+        error_message = null,
+        updated_at = now()
+      where id = $1
+        and status in ('pending', 'pending_review', 'rejected', 'failed')
+      returning id
+    `,
+    [id, content],
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return findPublicationJobById(id);
+}
+
 export async function registerPublicationJobRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: PublicationJobsQuery }>("/publication-jobs", async (request) => {
     const limit = parseLimit(request.query.limit);
@@ -238,6 +269,29 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
         order,
         runs: result.rows.map(rowToPublicationJobRun),
       };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams; Body: UpdateContentBody }>(
+    "/publication-jobs/:id/content",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const content = request.body?.content?.trim();
+
+      if (!content) {
+        return reply.code(400).send({ error: "invalid_content", message: "Content cannot be empty" });
+      }
+
+      const job = await updatePublicationJobContent(request.params.id, content);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "content_not_editable",
+          message: "Only pending, pending_review, rejected or failed jobs can be edited",
+        });
+      }
+
+      return { job };
     },
   );
 
