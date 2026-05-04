@@ -19,6 +19,7 @@ const adminHtml = String.raw`<!doctype html>
     .controls { display: grid; grid-template-columns: 1fr auto auto auto auto auto; gap: 10px; align-items: center; }
     input, select, button, textarea { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(3, 7, 18, 0.82); color: #f9fafb; padding: 10px 12px; font: inherit; }
     input[type="password"] { width: 100%; box-sizing: border-box; }
+    input[type="checkbox"] { accent-color: #f97316; }
     textarea { width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical; line-height: 1.45; margin-top: 12px; }
     button { cursor: pointer; }
     button:hover { border-color: #f97316; }
@@ -27,6 +28,9 @@ const adminHtml = String.raw`<!doctype html>
     button[disabled] { cursor: not-allowed; opacity: 0.45; }
     .status-line { margin-top: 12px; font-size: 14px; }
     .hint { margin-top: 8px; font-size: 13px; }
+    .bulk-actions { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(148, 163, 184, 0.16); }
+    .bulk-actions label, .select-job { display: inline-flex; gap: 7px; align-items: center; color: #e5e7eb; }
+    .select-job { font-size: 12px; border: 1px dashed rgba(148, 163, 184, 0.35); border-radius: 999px; padding: 3px 8px; }
     .platforms { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
     .platforms label { display: inline-flex; gap: 6px; align-items: center; color: #e5e7eb; }
     .jobs { display: grid; gap: 14px; }
@@ -46,7 +50,7 @@ const adminHtml = String.raw`<!doctype html>
     summary { cursor: pointer; color: #fdba74; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(3, 7, 18, 0.72); border-radius: 12px; padding: 12px; border: 1px solid rgba(148, 163, 184, 0.16); }
     .empty { text-align: center; color: #9ca3af; padding: 42px 16px; }
-    @media (max-width: 980px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } }
+    @media (max-width: 980px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } .bulk-actions button { width: 100%; } }
   </style>
 </head>
 <body>
@@ -87,6 +91,11 @@ const adminHtml = String.raw`<!doctype html>
         </select>
         <button class="primary" id="refresh">Rafraîchir</button>
       </div>
+      <div class="bulk-actions">
+        <label><input id="selectAllArchivable" type="checkbox" /> Sélectionner les jobs terminés visibles</label>
+        <button id="archiveSelected">Archiver la sélection</button>
+        <span class="hint" id="selectionStatus">0 job sélectionné.</span>
+      </div>
       <div class="status-line" id="statusLine">Initialisation…</div>
       <div class="hint" id="tokenHint"></div>
     </section>
@@ -116,6 +125,9 @@ const adminHtml = String.raw`<!doctype html>
     var orderInput = document.querySelector('#order');
     var refreshButton = document.querySelector('#refresh');
     var createDraftButton = document.querySelector('#createDraft');
+    var archiveSelectedButton = document.querySelector('#archiveSelected');
+    var selectAllArchivable = document.querySelector('#selectAllArchivable');
+    var selectionStatus = document.querySelector('#selectionStatus');
     var draftContent = document.querySelector('#draftContent');
     var draftStatus = document.querySelector('#draftStatus');
     var jobsEl = document.querySelector('#jobs');
@@ -139,6 +151,23 @@ const adminHtml = String.raw`<!doctype html>
     function updateStatusAvailability() {
       statusInput.disabled = viewInput.value !== 'custom';
       if (viewInput.value !== 'custom') statusInput.value = '';
+    }
+
+    function selectedJobIds() {
+      return Array.from(document.querySelectorAll('input[name="jobSelect"]:checked')).map(function (input) { return input.value; });
+    }
+
+    function archivableInputs() {
+      return Array.from(document.querySelectorAll('input[name="jobSelect"]'));
+    }
+
+    function updateSelectionStatus() {
+      var selected = selectedJobIds().length;
+      var total = archivableInputs().length;
+      selectionStatus.textContent = selected + ' / ' + total + ' job(s) terminé(s) sélectionné(s).';
+      archiveSelectedButton.disabled = selected === 0;
+      selectAllArchivable.checked = total > 0 && selected === total;
+      selectAllArchivable.indeterminate = selected > 0 && selected < total;
     }
 
     tokenInput.addEventListener('input', function () {
@@ -169,17 +198,17 @@ const adminHtml = String.raw`<!doctype html>
     function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
     function canReject(job) { return ['pending', 'pending_review', 'approved'].includes(job.status); }
     function canEdit(job) { return ['pending', 'pending_review', 'rejected', 'failed'].includes(job.status); }
-    function canArchive(job) { return job.status !== 'archived' && job.status !== 'publishing'; }
+    function canArchive(job) { return ['published', 'rejected', 'failed'].includes(job.status); }
 
     function actionHint(job) {
       if (job.status === 'archived') return 'Archivé : conservé pour audit, masqué des vues actives.';
-      if (job.status === 'published') return 'Déjà publié : tu peux l’archiver pour nettoyer la vue.';
+      if (job.status === 'published') return 'Publié : tu peux l’archiver pour nettoyer la vue.';
       if (job.status === 'publishing') return 'Publication en cours côté worker.';
       if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick. Édition verrouillée.';
       if (job.status === 'rejected') return 'Rejeté : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
       if (job.status === 'failed') return 'Échec : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
       if (!hasAdminToken()) return 'Ajoute le token admin pour éditer, approuver, rejeter ou archiver.';
-      return 'Édition, validation et archivage disponibles.';
+      return 'Édition et validation disponibles.';
     }
 
     async function api(path, options) {
@@ -215,6 +244,26 @@ const adminHtml = String.raw`<!doctype html>
     async function approveJob(id) { await api(jobUrl(id, '/approve'), { method: 'POST' }); await loadJobs(); }
     async function archiveJob(id) { await api(jobUrl(id, '/archive'), { method: 'POST' }); await loadJobs(); }
 
+    async function archiveSelectedJobs() {
+      var ids = selectedJobIds();
+      if (!ids.length) return;
+      if (!confirm('Archiver ' + ids.length + ' job(s) sélectionné(s) ? Ils resteront disponibles dans la vue Archives.')) return;
+      archiveSelectedButton.disabled = true;
+      statusLine.textContent = 'Archivage de ' + ids.length + ' job(s)…';
+      var archived = 0;
+      var failed = 0;
+      for (var i = 0; i < ids.length; i += 1) {
+        try {
+          await api(jobUrl(ids[i], '/archive'), { method: 'POST' });
+          archived += 1;
+        } catch (_error) {
+          failed += 1;
+        }
+      }
+      statusLine.textContent = archived + ' job(s) archivé(s), ' + failed + ' erreur(s).';
+      await loadJobs();
+    }
+
     async function rejectJob(id) {
       var reason = prompt('Raison du rejet ?', 'À retravailler avant publication');
       if (reason === null) return;
@@ -238,6 +287,7 @@ const adminHtml = String.raw`<!doctype html>
       var sourceLabel = job.sourceEventId || 'manuel';
       var html = '';
       html += '<div class="job-header"><div class="badges">';
+      if (canArchive(job)) html += '<label class="select-job"><input type="checkbox" name="jobSelect" value="' + escapeHtml(job.id) + '" /> archiver</label>';
       html += '<span class="badge ' + escapeHtml(job.status) + '">' + escapeHtml(job.status) + '</span>';
       html += '<span class="badge">' + escapeHtml(job.platform) + '</span>';
       html += '<span class="badge">' + escapeHtml(sourceLabel === 'manuel' ? 'manual' : 'nostr') + '</span>';
@@ -256,6 +306,8 @@ const adminHtml = String.raw`<!doctype html>
       html += '<details><summary>Historique d’exécution</summary><pre id="' + runId + '">Clique sur “Voir les runs”.</pre></details>';
       card.innerHTML = html;
 
+      var selectInput = card.querySelector('input[name="jobSelect"]');
+      if (selectInput) selectInput.addEventListener('change', updateSelectionStatus);
       var saveButton = card.querySelector('[data-action="save"]');
       if (saveButton) saveButton.addEventListener('click', async function () { try { var editor = card.querySelector('#' + CSS.escape(editorId)); await updateContent(job.id, editor.value); } catch (error) { alert(error.message); } });
       var approveButton = card.querySelector('[data-action="approve"]');
@@ -288,18 +340,31 @@ const adminHtml = String.raw`<!doctype html>
       localStorage.setItem('relaypress.status', statusInput.value);
       localStorage.setItem('relaypress.platform', platformInput.value);
       localStorage.setItem('relaypress.order', orderInput.value);
+      selectAllArchivable.checked = false;
+      selectAllArchivable.indeterminate = false;
       statusLine.textContent = 'Chargement des jobs…';
       jobsEl.innerHTML = '';
       try {
         var payload = await api('/publication-jobs?' + params.toString());
         var label = viewInput.value === 'todo' ? 'vue À traiter' : (viewInput.value === 'archived' ? 'vue Archives' : (viewInput.value === 'all' ? 'vue Tous actifs' : 'statut précis'));
         statusLine.textContent = payload.count + ' job(s), ' + label + ', ordre ' + payload.order + '.';
-        if (!payload.jobs.length) { jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>'; return; }
+        if (!payload.jobs.length) {
+          jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>';
+          updateSelectionStatus();
+          return;
+        }
         for (var i = 0; i < payload.jobs.length; i += 1) jobsEl.appendChild(renderJob(payload.jobs[i]));
-      } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; }
+        updateSelectionStatus();
+      } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; updateSelectionStatus(); }
     }
 
     createDraftButton.addEventListener('click', createManualDraft);
+    archiveSelectedButton.addEventListener('click', archiveSelectedJobs);
+    selectAllArchivable.addEventListener('change', function () {
+      var checked = selectAllArchivable.checked;
+      archivableInputs().forEach(function (input) { input.checked = checked; });
+      updateSelectionStatus();
+    });
     refreshButton.addEventListener('click', loadJobs);
     viewInput.addEventListener('change', loadJobs);
     statusInput.addEventListener('change', loadJobs);
@@ -307,6 +372,7 @@ const adminHtml = String.raw`<!doctype html>
     orderInput.addEventListener('change', loadJobs);
     updateStatusAvailability();
     updateTokenHint();
+    updateSelectionStatus();
     loadJobs();
   </script>
 </body>
