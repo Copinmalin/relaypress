@@ -38,6 +38,7 @@ const adminHtml = String.raw`<!doctype html>
     .approved, .publishing { border-color: #38bdf8; color: #bae6fd; }
     .published { border-color: #22c55e; color: #bbf7d0; }
     .rejected, .failed { border-color: #ef4444; color: #fecaca; }
+    .archived { border-color: #94a3b8; color: #cbd5e1; }
     .content { white-space: pre-wrap; line-height: 1.45; padding: 14px; background: rgba(3, 7, 18, 0.62); border: 1px solid rgba(148, 163, 184, 0.16); border-radius: 14px; margin: 12px 0; }
     .meta { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
     .actions { margin-top: 12px; }
@@ -51,14 +52,15 @@ const adminHtml = String.raw`<!doctype html>
 <body>
   <main>
     <h1>RelayPress Admin</h1>
-    <div class="subtitle">Créer, valider, éditer et auditer les jobs de publication.</div>
+    <div class="subtitle">Créer, valider, éditer, archiver et auditer les jobs de publication.</div>
 
     <section class="panel">
       <div class="controls">
         <input id="token" type="password" placeholder="ADMIN_API_TOKEN" autocomplete="off" />
         <select id="view">
           <option value="todo" selected>À traiter</option>
-          <option value="all">Tous</option>
+          <option value="all">Tous actifs</option>
+          <option value="archived">Archives</option>
           <option value="custom">Statut précis</option>
         </select>
         <select id="status">
@@ -70,6 +72,7 @@ const adminHtml = String.raw`<!doctype html>
           <option value="published">Published</option>
           <option value="rejected">Rejected</option>
           <option value="failed">Failed</option>
+          <option value="archived">Archived</option>
         </select>
         <select id="platform">
           <option value="">Toutes plateformes</option>
@@ -166,15 +169,17 @@ const adminHtml = String.raw`<!doctype html>
     function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
     function canReject(job) { return ['pending', 'pending_review', 'approved'].includes(job.status); }
     function canEdit(job) { return ['pending', 'pending_review', 'rejected', 'failed'].includes(job.status); }
+    function canArchive(job) { return job.status !== 'archived' && job.status !== 'publishing'; }
 
     function actionHint(job) {
-      if (job.status === 'published') return 'Déjà publié : plus aucune action éditoriale disponible.';
+      if (job.status === 'archived') return 'Archivé : conservé pour audit, masqué des vues actives.';
+      if (job.status === 'published') return 'Déjà publié : tu peux l’archiver pour nettoyer la vue.';
       if (job.status === 'publishing') return 'Publication en cours côté worker.';
       if (job.status === 'approved') return 'Approuvé : le worker va le publier au prochain tick. Édition verrouillée.';
-      if (job.status === 'rejected') return 'Rejeté : tu peux modifier le texte pour le remettre en pending_review.';
-      if (job.status === 'failed') return 'Échec : tu peux modifier le texte pour le remettre en pending_review.';
-      if (!hasAdminToken()) return 'Ajoute le token admin pour éditer, approuver ou rejeter.';
-      return 'Édition et validation disponibles.';
+      if (job.status === 'rejected') return 'Rejeté : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
+      if (job.status === 'failed') return 'Échec : tu peux modifier le texte pour le remettre en pending_review, ou l’archiver.';
+      if (!hasAdminToken()) return 'Ajoute le token admin pour éditer, approuver, rejeter ou archiver.';
+      return 'Édition, validation et archivage disponibles.';
     }
 
     async function api(path, options) {
@@ -208,6 +213,7 @@ const adminHtml = String.raw`<!doctype html>
 
     async function updateContent(id, content) { await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) }); await loadJobs(); }
     async function approveJob(id) { await api(jobUrl(id, '/approve'), { method: 'POST' }); await loadJobs(); }
+    async function archiveJob(id) { await api(jobUrl(id, '/archive'), { method: 'POST' }); await loadJobs(); }
 
     async function rejectJob(id) {
       var reason = prompt('Raison du rejet ?', 'À retravailler avant publication');
@@ -243,6 +249,7 @@ const adminHtml = String.raw`<!doctype html>
       if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
       if (canApprove(job)) html += '<button class="primary" data-action="approve">Approuver</button>';
       if (canReject(job)) html += '<button class="danger" data-action="reject">Rejeter</button>';
+      if (canArchive(job)) html += '<button data-action="archive">Archiver</button>';
       html += '<button data-action="runs">Voir les runs</button><button data-action="copy">Copier ID</button></div>';
       html += '<div class="hint">' + escapeHtml(actionHint(job)) + '</div>';
       html += '<details><summary>Détails source</summary><pre>' + escapeHtml(JSON.stringify(job.sourceEvent, null, 2)) + '</pre></details>';
@@ -255,6 +262,11 @@ const adminHtml = String.raw`<!doctype html>
       if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
       var rejectButton = card.querySelector('[data-action="reject"]');
       if (rejectButton) rejectButton.addEventListener('click', async function () { try { await rejectJob(job.id); } catch (error) { alert(error.message); } });
+      var archiveButton = card.querySelector('[data-action="archive"]');
+      if (archiveButton) archiveButton.addEventListener('click', async function () {
+        if (!confirm('Archiver ce job ? Il restera disponible dans la vue Archives.')) return;
+        try { await archiveJob(job.id); } catch (error) { alert(error.message); }
+      });
       var runsButton = card.querySelector('[data-action="runs"]');
       if (runsButton) runsButton.addEventListener('click', async function () { var target = card.querySelector('#' + CSS.escape(runId)); await loadRuns(job.id, target); });
       var copyButton = card.querySelector('[data-action="copy"]');
@@ -267,6 +279,7 @@ const adminHtml = String.raw`<!doctype html>
       params.set('order', orderInput.value);
       params.set('limit', '100');
       if (viewInput.value === 'todo') params.set('view', 'todo');
+      if (viewInput.value === 'archived') params.set('view', 'archived');
       if (viewInput.value === 'custom' && statusInput.value) params.set('status', statusInput.value);
       if (platformInput.value) params.set('platform', platformInput.value);
       updateStatusAvailability();
@@ -279,7 +292,7 @@ const adminHtml = String.raw`<!doctype html>
       jobsEl.innerHTML = '';
       try {
         var payload = await api('/publication-jobs?' + params.toString());
-        var label = viewInput.value === 'todo' ? 'vue À traiter' : (viewInput.value === 'all' ? 'vue Tous' : 'statut précis');
+        var label = viewInput.value === 'todo' ? 'vue À traiter' : (viewInput.value === 'archived' ? 'vue Archives' : (viewInput.value === 'all' ? 'vue Tous actifs' : 'statut précis'));
         statusLine.textContent = payload.count + ' job(s), ' + label + ', ordre ' + payload.order + '.';
         if (!payload.jobs.length) { jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>'; return; }
         for (var i = 0; i < payload.jobs.length; i += 1) jobsEl.appendChild(renderJob(payload.jobs[i]));
