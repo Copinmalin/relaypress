@@ -130,7 +130,7 @@ const adminHtml = String.raw`<!doctype html>
     function updateTokenHint() {
       tokenHint.textContent = hasAdminToken()
         ? 'Token présent : les actions éditoriales peuvent être envoyées.'
-        : 'Token absent : la lecture fonctionne, mais Créer/Éditer/Approuver/Rejeter échoueront.';
+        : 'Token absent : aucune donnée éditoriale ne sera affichée.';
     }
 
     function updateStatusAvailability() {
@@ -180,11 +180,9 @@ const adminHtml = String.raw`<!doctype html>
     async function api(path, options) {
       options = options || {};
       var headers = new Headers(options.headers || {});
-      if (options.method && options.method !== 'GET') {
-        var token = tokenInput.value.trim();
-        if (!token) throw new Error('ADMIN_API_TOKEN manquant dans l’interface');
-        headers.set('Authorization', 'Bearer ' + token);
-      }
+      var token = tokenInput.value.trim();
+      if (!token) throw new Error('ADMIN_API_TOKEN manquant dans l’interface');
+      headers.set('Authorization', 'Bearer ' + token);
       if (options.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
       var response = await fetch(path, Object.assign({}, options, { headers: headers }));
       var payload = await response.json().catch(function () { return {}; });
