@@ -11,10 +11,11 @@ type PublicationJobStatus =
   | "publishing"
   | "rejected"
   | "published"
-  | "failed";
+  | "failed"
+  | "archived";
 
 type SortOrder = "asc" | "desc";
-type PublicationJobsView = "todo";
+type PublicationJobsView = "todo" | "active" | "archived";
 
 type PublicationJobsQuery = {
   status?: PublicationJobStatus;
@@ -187,7 +188,7 @@ async function createManualDraftJobs(content: string, platforms: string[]) {
 
 async function updatePublicationJobStatus(
   id: string,
-  status: Extract<PublicationJobStatus, "approved" | "rejected">,
+  status: Extract<PublicationJobStatus, "approved" | "rejected" | "archived">,
   errorMessage: string | null = null,
 ) {
   await pool.query(
@@ -201,6 +202,27 @@ async function updatePublicationJobStatus(
     `,
     [id, status, errorMessage],
   );
+
+  return findPublicationJobById(id);
+}
+
+async function archivePublicationJob(id: string) {
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        status = 'archived',
+        updated_at = now()
+      where id = $1
+        and status <> 'publishing'
+      returning id
+    `,
+    [id],
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
 
   return findPublicationJobById(id);
 }
@@ -246,6 +268,10 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
         clauses.push(`j.status = $${values.length}`);
       } else if (request.query.view === "todo") {
         clauses.push("j.status in ('pending', 'pending_review', 'failed')");
+      } else if (request.query.view === "archived") {
+        clauses.push("j.status = 'archived'");
+      } else {
+        clauses.push("j.status <> 'archived'");
       }
 
       if (request.query.platform) {
@@ -271,7 +297,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       return {
         count: result.rowCount,
         order,
-        view: request.query.status ? null : request.query.view ?? null,
+        view: request.query.status ? null : request.query.view ?? "active",
         jobs: result.rows.map(rowToPublicationJob),
       };
     },
@@ -425,6 +451,23 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
 
       if (!job) {
         return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/archive",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await archivePublicationJob(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "job_not_archivable",
+          message: "Publication job not found or currently publishing",
+        });
       }
 
       return { job };
