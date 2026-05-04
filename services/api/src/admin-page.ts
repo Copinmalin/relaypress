@@ -16,7 +16,7 @@ const adminHtml = String.raw`<!doctype html>
     .subtitle, .status-line, .meta, .hint { color: #9ca3af; }
     .panel, .job { background: rgba(17, 24, 39, 0.86); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.28); }
     .panel { padding: 16px; margin: 18px 0; }
-    .controls { display: grid; grid-template-columns: 1fr repeat(4, auto); gap: 10px; align-items: center; }
+    .controls { display: grid; grid-template-columns: 1fr auto auto auto auto auto; gap: 10px; align-items: center; }
     input, select, button, textarea { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(3, 7, 18, 0.82); color: #f9fafb; padding: 10px 12px; font: inherit; }
     input[type="password"] { width: 100%; box-sizing: border-box; }
     textarea { width: 100%; min-height: 120px; box-sizing: border-box; resize: vertical; line-height: 1.45; margin-top: 12px; }
@@ -45,7 +45,7 @@ const adminHtml = String.raw`<!doctype html>
     summary { cursor: pointer; color: #fdba74; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; background: rgba(3, 7, 18, 0.72); border-radius: 12px; padding: 12px; border: 1px solid rgba(148, 163, 184, 0.16); }
     .empty { text-align: center; color: #9ca3af; padding: 42px 16px; }
-    @media (max-width: 820px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } }
+    @media (max-width: 980px) { body { padding: 14px; } .controls { grid-template-columns: 1fr; } .job-header { display: block; } .actions button { width: 100%; } }
   </style>
 </head>
 <body>
@@ -56,6 +56,11 @@ const adminHtml = String.raw`<!doctype html>
     <section class="panel">
       <div class="controls">
         <input id="token" type="password" placeholder="ADMIN_API_TOKEN" autocomplete="off" />
+        <select id="view">
+          <option value="todo" selected>À traiter</option>
+          <option value="all">Tous</option>
+          <option value="custom">Statut précis</option>
+        </select>
         <select id="status">
           <option value="">Tous les statuts</option>
           <option value="pending">Pending</option>
@@ -102,6 +107,7 @@ const adminHtml = String.raw`<!doctype html>
 
   <script>
     var tokenInput = document.querySelector('#token');
+    var viewInput = document.querySelector('#view');
     var statusInput = document.querySelector('#status');
     var platformInput = document.querySelector('#platform');
     var orderInput = document.querySelector('#order');
@@ -114,6 +120,10 @@ const adminHtml = String.raw`<!doctype html>
     var tokenHint = document.querySelector('#tokenHint');
 
     tokenInput.value = localStorage.getItem('relaypress.adminToken') || '';
+    viewInput.value = localStorage.getItem('relaypress.view') || 'todo';
+    statusInput.value = localStorage.getItem('relaypress.status') || '';
+    platformInput.value = localStorage.getItem('relaypress.platform') || '';
+    orderInput.value = localStorage.getItem('relaypress.order') || 'desc';
 
     function hasAdminToken() { return tokenInput.value.trim().length > 0; }
 
@@ -121,6 +131,11 @@ const adminHtml = String.raw`<!doctype html>
       tokenHint.textContent = hasAdminToken()
         ? 'Token présent : les actions éditoriales peuvent être envoyées.'
         : 'Token absent : la lecture fonctionne, mais Créer/Éditer/Approuver/Rejeter échoueront.';
+    }
+
+    function updateStatusAvailability() {
+      statusInput.disabled = viewInput.value !== 'custom';
+      if (viewInput.value !== 'custom') statusInput.value = '';
     }
 
     tokenInput.addEventListener('input', function () {
@@ -145,9 +160,7 @@ const adminHtml = String.raw`<!doctype html>
     }
 
     function selectedDraftPlatforms() {
-      return Array.from(document.querySelectorAll('input[name="draftPlatform"]:checked')).map(function (input) {
-        return input.value;
-      });
+      return Array.from(document.querySelectorAll('input[name="draftPlatform"]:checked')).map(function (input) { return input.value; });
     }
 
     function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
@@ -186,24 +199,16 @@ const adminHtml = String.raw`<!doctype html>
       if (!platforms.length) { alert('Sélectionne au moins une plateforme.'); return; }
       draftStatus.textContent = 'Création du brouillon…';
       try {
-        var payload = await api('/publication-jobs/manual-draft', {
-          method: 'POST',
-          body: JSON.stringify({ content: content, platforms: platforms })
-        });
+        var payload = await api('/publication-jobs/manual-draft', { method: 'POST', body: JSON.stringify({ content: content, platforms: platforms }) });
         draftStatus.textContent = payload.count + ' job(s) pending_review créés.';
         draftContent.value = '';
-        statusInput.value = 'pending_review';
+        viewInput.value = 'todo';
+        statusInput.value = '';
         await loadJobs();
-      } catch (error) {
-        draftStatus.textContent = 'Erreur: ' + error.message;
-      }
+      } catch (error) { draftStatus.textContent = 'Erreur: ' + error.message; }
     }
 
-    async function updateContent(id, content) {
-      await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) });
-      await loadJobs();
-    }
-
+    async function updateContent(id, content) { await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) }); await loadJobs(); }
     async function approveJob(id) { await api(jobUrl(id, '/approve'), { method: 'POST' }); await loadJobs(); }
 
     async function rejectJob(id) {
@@ -235,12 +240,8 @@ const adminHtml = String.raw`<!doctype html>
       html += '</div><div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div></div>';
       html += '<div class="content">' + escapeHtml(job.adaptedContent || '') + '</div>';
       if (canEdit(job)) html += '<textarea id="' + editorId + '">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
-      html += '<div class="meta">';
-      html += '<strong>Job:</strong> ' + escapeHtml(job.id) + '<br/>';
-      html += '<strong>Source:</strong> ' + escapeHtml(sourceLabel) + '<br/>';
-      html += '<strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/>';
-      html += '<strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—');
-      html += '</div><div class="actions">';
+      html += '<div class="meta"><strong>Job:</strong> ' + escapeHtml(job.id) + '<br/><strong>Source:</strong> ' + escapeHtml(sourceLabel) + '<br/><strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/><strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—') + '</div>';
+      html += '<div class="actions">';
       if (canEdit(job)) html += '<button class="primary" data-action="save">Enregistrer le texte</button>';
       if (canApprove(job)) html += '<button class="primary" data-action="approve">Approuver</button>';
       if (canReject(job)) html += '<button class="danger" data-action="reject">Rejeter</button>';
@@ -251,26 +252,15 @@ const adminHtml = String.raw`<!doctype html>
       card.innerHTML = html;
 
       var saveButton = card.querySelector('[data-action="save"]');
-      if (saveButton) saveButton.addEventListener('click', async function () {
-        try {
-          var editor = card.querySelector('#' + CSS.escape(editorId));
-          await updateContent(job.id, editor.value);
-        } catch (error) { alert(error.message); }
-      });
+      if (saveButton) saveButton.addEventListener('click', async function () { try { var editor = card.querySelector('#' + CSS.escape(editorId)); await updateContent(job.id, editor.value); } catch (error) { alert(error.message); } });
       var approveButton = card.querySelector('[data-action="approve"]');
       if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
       var rejectButton = card.querySelector('[data-action="reject"]');
       if (rejectButton) rejectButton.addEventListener('click', async function () { try { await rejectJob(job.id); } catch (error) { alert(error.message); } });
       var runsButton = card.querySelector('[data-action="runs"]');
-      if (runsButton) runsButton.addEventListener('click', async function () {
-        var target = card.querySelector('#' + CSS.escape(runId));
-        await loadRuns(job.id, target);
-      });
+      if (runsButton) runsButton.addEventListener('click', async function () { var target = card.querySelector('#' + CSS.escape(runId)); await loadRuns(job.id, target); });
       var copyButton = card.querySelector('[data-action="copy"]');
-      if (copyButton) copyButton.addEventListener('click', async function () {
-        await navigator.clipboard.writeText(job.id);
-        statusLine.textContent = 'ID copié dans le presse-papiers.';
-      });
+      if (copyButton) copyButton.addEventListener('click', async function () { await navigator.clipboard.writeText(job.id); statusLine.textContent = 'ID copié dans le presse-papiers.'; });
       return card;
     }
 
@@ -278,14 +268,21 @@ const adminHtml = String.raw`<!doctype html>
       var params = new URLSearchParams();
       params.set('order', orderInput.value);
       params.set('limit', '100');
-      if (statusInput.value) params.set('status', statusInput.value);
+      if (viewInput.value === 'todo') params.set('view', 'todo');
+      if (viewInput.value === 'custom' && statusInput.value) params.set('status', statusInput.value);
       if (platformInput.value) params.set('platform', platformInput.value);
+      updateStatusAvailability();
       updateTokenHint();
+      localStorage.setItem('relaypress.view', viewInput.value);
+      localStorage.setItem('relaypress.status', statusInput.value);
+      localStorage.setItem('relaypress.platform', platformInput.value);
+      localStorage.setItem('relaypress.order', orderInput.value);
       statusLine.textContent = 'Chargement des jobs…';
       jobsEl.innerHTML = '';
       try {
         var payload = await api('/publication-jobs?' + params.toString());
-        statusLine.textContent = payload.count + ' job(s), ordre ' + payload.order + '.';
+        var label = viewInput.value === 'todo' ? 'vue À traiter' : (viewInput.value === 'all' ? 'vue Tous' : 'statut précis');
+        statusLine.textContent = payload.count + ' job(s), ' + label + ', ordre ' + payload.order + '.';
         if (!payload.jobs.length) { jobsEl.innerHTML = '<div class="panel empty">Aucun job pour ces filtres.</div>'; return; }
         for (var i = 0; i < payload.jobs.length; i += 1) jobsEl.appendChild(renderJob(payload.jobs[i]));
       } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; }
@@ -293,9 +290,11 @@ const adminHtml = String.raw`<!doctype html>
 
     createDraftButton.addEventListener('click', createManualDraft);
     refreshButton.addEventListener('click', loadJobs);
+    viewInput.addEventListener('change', loadJobs);
     statusInput.addEventListener('change', loadJobs);
     platformInput.addEventListener('change', loadJobs);
     orderInput.addEventListener('change', loadJobs);
+    updateStatusAvailability();
     updateTokenHint();
     loadJobs();
   </script>
