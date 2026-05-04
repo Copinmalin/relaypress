@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { workerConfig } from "../config.js";
 import { pool } from "../db.js";
 
-type ApprovedPublicationJob = {
+type ClaimedPublicationJob = {
   id: string;
   platform: string;
   adapted_content: string | null;
@@ -13,18 +13,26 @@ type PublicationRunResult = {
   externalPostId: string;
 };
 
-function externalPostIdFor(job: ApprovedPublicationJob): string {
+function externalPostIdFor(job: ClaimedPublicationJob): string {
   return `mock:${job.platform}:${job.id}`;
 }
 
-async function findApprovedJobs(): Promise<ApprovedPublicationJob[]> {
-  const result = await pool.query<ApprovedPublicationJob>(
+async function claimApprovedJobs(): Promise<ClaimedPublicationJob[]> {
+  const result = await pool.query<ClaimedPublicationJob>(
     `
-      select id, platform, adapted_content
-      from publication_jobs
-      where status = 'approved'
-      order by updated_at asc
-      limit $1
+      update publication_jobs
+      set
+        status = 'publishing',
+        updated_at = now()
+      where id in (
+        select id
+        from publication_jobs
+        where status = 'approved'
+        order by updated_at asc
+        limit $1
+        for update skip locked
+      )
+      returning id, platform, adapted_content
     `,
     [workerConfig.publisherBatchSize],
   );
@@ -32,7 +40,7 @@ async function findApprovedJobs(): Promise<ApprovedPublicationJob[]> {
   return result.rows;
 }
 
-async function createStartedRun(job: ApprovedPublicationJob): Promise<string> {
+async function createStartedRun(job: ClaimedPublicationJob): Promise<string> {
   const runId = randomUUID();
 
   await pool.query(
@@ -63,7 +71,7 @@ async function createStartedRun(job: ApprovedPublicationJob): Promise<string> {
 
 async function markRunAsPublished(
   runId: string,
-  job: ApprovedPublicationJob,
+  job: ClaimedPublicationJob,
   externalPostId: string,
 ): Promise<void> {
   await pool.query(
@@ -92,7 +100,7 @@ async function markRunAsPublished(
 
 async function markRunAsFailed(
   runId: string,
-  job: ApprovedPublicationJob,
+  job: ClaimedPublicationJob,
   error: unknown,
 ): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
@@ -120,7 +128,23 @@ async function markRunAsFailed(
   );
 }
 
-async function markJobAsPublished(job: ApprovedPublicationJob): Promise<PublicationRunResult> {
+async function markJobAsFailed(job: ClaimedPublicationJob, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+
+  await pool.query(
+    `
+      update publication_jobs
+      set
+        status = 'failed',
+        error_message = $2,
+        updated_at = now()
+      where id = $1 and status = 'publishing'
+    `,
+    [job.id, message],
+  );
+}
+
+async function markJobAsPublished(job: ClaimedPublicationJob): Promise<PublicationRunResult> {
   const runId = await createStartedRun(job);
   const externalPostId = externalPostIdFor(job);
 
@@ -133,7 +157,7 @@ async function markJobAsPublished(job: ApprovedPublicationJob): Promise<Publicat
           external_post_id = $2,
           published_at = now(),
           updated_at = now()
-        where id = $1 and status = 'approved'
+        where id = $1 and status = 'publishing'
       `,
       [job.id, externalPostId],
     );
@@ -143,6 +167,7 @@ async function markJobAsPublished(job: ApprovedPublicationJob): Promise<Publicat
     return { runId, externalPostId };
   } catch (error) {
     await markRunAsFailed(runId, job, error);
+    await markJobAsFailed(job, error);
     throw error;
   }
 }
@@ -161,7 +186,7 @@ export async function processApprovedPublicationJobs(): Promise<number> {
     return 0;
   }
 
-  const jobs = await findApprovedJobs();
+  const jobs = await claimApprovedJobs();
 
   for (const job of jobs) {
     const result = await markJobAsPublished(job);
