@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
 import { pool } from "./db.js";
@@ -33,6 +34,13 @@ type UpdateContentBody = {
   content?: string;
 };
 
+type ManualDraftBody = {
+  content?: string;
+  platforms?: string[];
+};
+
+const SUPPORTED_MANUAL_PLATFORMS = new Set(["x", "linkedin", "facebook", "instagram"]);
+
 const PUBLICATION_JOB_SELECT = `
   select
     j.id,
@@ -65,6 +73,11 @@ function parseLimit(value: string | undefined): number {
 
 function parseOrder(value: string | undefined): SortOrder {
   return value === "asc" ? "asc" : "desc";
+}
+
+function parseManualPlatforms(platforms: string[] | undefined): string[] {
+  const normalized = [...new Set((platforms ?? []).map((platform) => platform.trim().toLowerCase()))];
+  return normalized.filter((platform) => SUPPORTED_MANUAL_PLATFORMS.has(platform));
 }
 
 function rowToPublicationJob(row: Record<string, unknown>) {
@@ -119,6 +132,55 @@ async function findPublicationJobById(id: string) {
   );
 
   return result.rows[0] ? rowToPublicationJob(result.rows[0]) : null;
+}
+
+async function findPublicationJobsByIds(ids: string[]) {
+  if (ids.length === 0) return [];
+
+  const result = await pool.query(
+    `
+      ${PUBLICATION_JOB_SELECT}
+      where j.id = any($1::varchar[])
+      order by j.created_at asc
+    `,
+    [ids],
+  );
+
+  return result.rows.map(rowToPublicationJob);
+}
+
+async function createManualDraftJobs(content: string, platforms: string[]) {
+  const draftId = randomUUID();
+  const jobIds = platforms.map((platform) => `manual:${draftId}:${platform}`);
+
+  await pool.query("begin");
+
+  try {
+    for (const platform of platforms) {
+      await pool.query(
+        `
+          insert into publication_jobs (
+            id,
+            source_event_id,
+            platform,
+            status,
+            adapted_content,
+            error_message,
+            created_at,
+            updated_at
+          ) values ($1, null, $2, 'pending_review', $3, null, now(), now())
+        `,
+        [`manual:${draftId}:${platform}`, platform, content],
+      );
+    }
+
+    await pool.query("commit");
+  } catch (error) {
+    await pool.query("rollback");
+    throw error;
+  }
+
+  return findPublicationJobsByIds(jobIds);
 }
 
 async function updatePublicationJobStatus(
@@ -223,6 +285,33 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       jobs: result.rows.map(rowToPublicationJob),
     };
   });
+
+  app.post<{ Body: ManualDraftBody }>(
+    "/publication-jobs/manual-draft",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const content = request.body?.content?.trim();
+      const platforms = parseManualPlatforms(request.body?.platforms);
+
+      if (!content) {
+        return reply.code(400).send({ error: "invalid_content", message: "Content cannot be empty" });
+      }
+
+      if (platforms.length === 0) {
+        return reply.code(400).send({
+          error: "invalid_platforms",
+          message: "At least one supported platform is required",
+        });
+      }
+
+      const jobs = await createManualDraftJobs(content, platforms);
+
+      return {
+        count: jobs.length,
+        jobs,
+      };
+    },
+  );
 
   app.get<{ Params: PublicationJobParams }>("/publication-jobs/:id", async (request, reply) => {
     const job = await findPublicationJobById(request.params.id);
