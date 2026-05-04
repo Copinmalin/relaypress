@@ -28,6 +28,8 @@ async function claimApprovedJobs(): Promise<ClaimedPublicationJob[]> {
         select id
         from publication_jobs
         where status = 'approved'
+          and external_post_id is null
+          and published_at is null
         order by updated_at asc
         limit $1
         for update skip locked
@@ -149,7 +151,7 @@ async function markJobAsPublished(job: ClaimedPublicationJob): Promise<Publicati
   const externalPostId = externalPostIdFor(job);
 
   try {
-    await pool.query(
+    const result = await pool.query(
       `
         update publication_jobs
         set
@@ -157,10 +159,18 @@ async function markJobAsPublished(job: ClaimedPublicationJob): Promise<Publicati
           external_post_id = $2,
           published_at = now(),
           updated_at = now()
-        where id = $1 and status = 'publishing'
+        where id = $1
+          and status = 'publishing'
+          and external_post_id is null
+          and published_at is null
+        returning id
       `,
       [job.id, externalPostId],
     );
+
+    if (result.rowCount === 0) {
+      throw new Error("Publication job was already published or is no longer publishable");
+    }
 
     await markRunAsPublished(runId, job, externalPostId);
 
