@@ -32,6 +32,7 @@ export async function createPublicationJobsFromEvent(event: Event): Promise<numb
         sourceEventId: event.id,
         platform,
         status: platform === "review" ? "pending_review" : "pending",
+        sourceContent: adapted.sourceContent,
         adaptedContent: adapted.content,
         errorMessage: adapted.warnings.length > 0 ? adapted.warnings.join(",") : null,
       })
