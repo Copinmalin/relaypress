@@ -10,7 +10,9 @@ const adminHtml = String.raw`<!doctype html>
     :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #030712; color: #f9fafb; }
     body { margin: 0; padding: 24px; background: radial-gradient(circle at top left, #1f2937, #030712 55%); }
     main { max-width: 1180px; margin: 0 auto; }
-    h1 { margin: 0; font-size: 32px; letter-spacing: -0.04em; }
+    h1, h2 { margin: 0; letter-spacing: -0.04em; }
+    h1 { font-size: 32px; }
+    h2 { font-size: 20px; margin-bottom: 8px; }
     .subtitle, .status-line, .meta, .hint { color: #9ca3af; }
     .panel, .job { background: rgba(17, 24, 39, 0.86); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.28); }
     .panel { padding: 16px; margin: 18px 0; }
@@ -23,9 +25,10 @@ const adminHtml = String.raw`<!doctype html>
     button.primary { background: #f97316; color: #111827; border-color: #f97316; font-weight: 700; }
     button.danger:hover { border-color: #ef4444; }
     button[disabled] { cursor: not-allowed; opacity: 0.45; }
-    button[disabled]:hover { border-color: rgba(148, 163, 184, 0.32); }
     .status-line { margin-top: 12px; font-size: 14px; }
     .hint { margin-top: 8px; font-size: 13px; }
+    .platforms { display: flex; gap: 12px; flex-wrap: wrap; margin: 12px 0; }
+    .platforms label { display: inline-flex; gap: 6px; align-items: center; color: #e5e7eb; }
     .jobs { display: grid; gap: 14px; }
     .job { padding: 16px; }
     .job-header { display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
@@ -48,7 +51,7 @@ const adminHtml = String.raw`<!doctype html>
 <body>
   <main>
     <h1>RelayPress Admin</h1>
-    <div class="subtitle">Valider, rejeter, éditer et auditer les jobs issus de Nostr.</div>
+    <div class="subtitle">Créer, valider, éditer et auditer les jobs de publication.</div>
 
     <section class="panel">
       <div class="controls">
@@ -69,7 +72,6 @@ const adminHtml = String.raw`<!doctype html>
           <option value="linkedin">LinkedIn</option>
           <option value="facebook">Facebook</option>
           <option value="instagram">Instagram</option>
-          <option value="review">Review</option>
         </select>
         <select id="order">
           <option value="desc">Plus récent en haut</option>
@@ -81,6 +83,20 @@ const adminHtml = String.raw`<!doctype html>
       <div class="hint" id="tokenHint"></div>
     </section>
 
+    <section class="panel">
+      <h2>Nouveau brouillon manuel</h2>
+      <div class="hint">Crée un job pending_review par plateforme, sans event Nostr source.</div>
+      <textarea id="draftContent" placeholder="Texte du brouillon à préparer pour publication…"></textarea>
+      <div class="platforms">
+        <label><input type="checkbox" name="draftPlatform" value="x" checked /> X</label>
+        <label><input type="checkbox" name="draftPlatform" value="linkedin" checked /> LinkedIn</label>
+        <label><input type="checkbox" name="draftPlatform" value="facebook" /> Facebook</label>
+        <label><input type="checkbox" name="draftPlatform" value="instagram" /> Instagram</label>
+      </div>
+      <button class="primary" id="createDraft">Créer le brouillon</button>
+      <div class="status-line" id="draftStatus"></div>
+    </section>
+
     <section class="jobs" id="jobs"></section>
   </main>
 
@@ -90,6 +106,9 @@ const adminHtml = String.raw`<!doctype html>
     var platformInput = document.querySelector('#platform');
     var orderInput = document.querySelector('#order');
     var refreshButton = document.querySelector('#refresh');
+    var createDraftButton = document.querySelector('#createDraft');
+    var draftContent = document.querySelector('#draftContent');
+    var draftStatus = document.querySelector('#draftStatus');
     var jobsEl = document.querySelector('#jobs');
     var statusLine = document.querySelector('#statusLine');
     var tokenHint = document.querySelector('#tokenHint');
@@ -101,7 +120,7 @@ const adminHtml = String.raw`<!doctype html>
     function updateTokenHint() {
       tokenHint.textContent = hasAdminToken()
         ? 'Token présent : les actions éditoriales peuvent être envoyées.'
-        : 'Token absent : la lecture fonctionne, mais Éditer/Approuver/Rejeter échoueront.';
+        : 'Token absent : la lecture fonctionne, mais Créer/Éditer/Approuver/Rejeter échoueront.';
     }
 
     tokenInput.addEventListener('input', function () {
@@ -123,6 +142,12 @@ const adminHtml = String.raw`<!doctype html>
     function formatDate(value) {
       if (!value) return '—';
       return new Date(value).toLocaleString('fr-FR');
+    }
+
+    function selectedDraftPlatforms() {
+      return Array.from(document.querySelectorAll('input[name="draftPlatform"]:checked')).map(function (input) {
+        return input.value;
+      });
     }
 
     function canApprove(job) { return ['pending', 'pending_review'].includes(job.status); }
@@ -154,6 +179,26 @@ const adminHtml = String.raw`<!doctype html>
       return payload;
     }
 
+    async function createManualDraft() {
+      var content = draftContent.value.trim();
+      var platforms = selectedDraftPlatforms();
+      if (!content) { alert('Le brouillon est vide.'); return; }
+      if (!platforms.length) { alert('Sélectionne au moins une plateforme.'); return; }
+      draftStatus.textContent = 'Création du brouillon…';
+      try {
+        var payload = await api('/publication-jobs/manual-draft', {
+          method: 'POST',
+          body: JSON.stringify({ content: content, platforms: platforms })
+        });
+        draftStatus.textContent = payload.count + ' job(s) pending_review créés.';
+        draftContent.value = '';
+        statusInput.value = 'pending_review';
+        await loadJobs();
+      } catch (error) {
+        draftStatus.textContent = 'Erreur: ' + error.message;
+      }
+    }
+
     async function updateContent(id, content) {
       await api(jobUrl(id, '/content'), { method: 'POST', body: JSON.stringify({ content: content }) });
       await loadJobs();
@@ -181,18 +226,18 @@ const adminHtml = String.raw`<!doctype html>
       card.className = 'job';
       var runId = 'runs-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
       var editorId = 'editor-' + job.id.replace(/[^a-zA-Z0-9]/g, '-');
+      var sourceLabel = job.sourceEventId || 'manuel';
       var html = '';
       html += '<div class="job-header"><div class="badges">';
       html += '<span class="badge ' + escapeHtml(job.status) + '">' + escapeHtml(job.status) + '</span>';
       html += '<span class="badge">' + escapeHtml(job.platform) + '</span>';
+      html += '<span class="badge">' + escapeHtml(sourceLabel === 'manuel' ? 'manual' : 'nostr') + '</span>';
       html += '</div><div class="meta">Créé: ' + formatDate(job.createdAt) + '<br/>Mis à jour: ' + formatDate(job.updatedAt) + '</div></div>';
       html += '<div class="content">' + escapeHtml(job.adaptedContent || '') + '</div>';
-      if (canEdit(job)) {
-        html += '<textarea id="' + editorId + '" data-role="editor">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
-      }
+      if (canEdit(job)) html += '<textarea id="' + editorId + '">' + escapeHtml(job.adaptedContent || '') + '</textarea>';
       html += '<div class="meta">';
       html += '<strong>Job:</strong> ' + escapeHtml(job.id) + '<br/>';
-      html += '<strong>Source:</strong> ' + escapeHtml(job.sourceEventId) + '<br/>';
+      html += '<strong>Source:</strong> ' + escapeHtml(sourceLabel) + '<br/>';
       html += '<strong>External:</strong> ' + escapeHtml(job.externalPostId || '—') + '<br/>';
       html += '<strong>Erreur:</strong> ' + escapeHtml(job.errorMessage || '—');
       html += '</div><div class="actions">';
@@ -212,25 +257,20 @@ const adminHtml = String.raw`<!doctype html>
           await updateContent(job.id, editor.value);
         } catch (error) { alert(error.message); }
       });
-
       var approveButton = card.querySelector('[data-action="approve"]');
       if (approveButton) approveButton.addEventListener('click', async function () { try { await approveJob(job.id); } catch (error) { alert(error.message); } });
-
       var rejectButton = card.querySelector('[data-action="reject"]');
       if (rejectButton) rejectButton.addEventListener('click', async function () { try { await rejectJob(job.id); } catch (error) { alert(error.message); } });
-
       var runsButton = card.querySelector('[data-action="runs"]');
       if (runsButton) runsButton.addEventListener('click', async function () {
         var target = card.querySelector('#' + CSS.escape(runId));
         await loadRuns(job.id, target);
       });
-
       var copyButton = card.querySelector('[data-action="copy"]');
       if (copyButton) copyButton.addEventListener('click', async function () {
         await navigator.clipboard.writeText(job.id);
         statusLine.textContent = 'ID copié dans le presse-papiers.';
       });
-
       return card;
     }
 
@@ -251,6 +291,7 @@ const adminHtml = String.raw`<!doctype html>
       } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; }
     }
 
+    createDraftButton.addEventListener('click', createManualDraft);
     refreshButton.addEventListener('click', loadJobs);
     statusInput.addEventListener('change', loadJobs);
     platformInput.addEventListener('change', loadJobs);
