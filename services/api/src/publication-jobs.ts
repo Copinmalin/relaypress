@@ -14,12 +14,14 @@ type PublicationJobStatus =
   | "failed";
 
 type SortOrder = "asc" | "desc";
+type PublicationJobsView = "todo";
 
 type PublicationJobsQuery = {
   status?: PublicationJobStatus;
   platform?: string;
   limit?: string;
   order?: SortOrder;
+  view?: PublicationJobsView;
 };
 
 type PublicationJobParams = {
@@ -239,6 +241,8 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     if (request.query.status) {
       values.push(request.query.status);
       clauses.push(`j.status = $${values.length}`);
+    } else if (request.query.view === "todo") {
+      clauses.push("j.status in ('pending', 'pending_review', 'failed')");
     }
 
     if (request.query.platform) {
@@ -264,6 +268,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
     return {
       count: result.rowCount,
       order,
+      view: request.query.status ? null : request.query.view ?? null,
       jobs: result.rows.map(rowToPublicationJob),
     };
   });
