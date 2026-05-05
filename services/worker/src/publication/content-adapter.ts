@@ -67,7 +67,7 @@ function adaptLinkedInContent(sourceContent: string): string {
   }
 
   const hook = buildLinkedInHook(paragraphs[0]);
-  const body = paragraphs.length > 1 ? paragraphs.slice(1) : paragraphs;
+  const body = paragraphs.length > 1 ? paragraphs.slice(1) : [];
   const bodyText = body
     .map((paragraph) => titleCaseFirstLetter(ensureSentenceEnding(paragraph)))
     .join("\n\n");
