@@ -14,6 +14,24 @@ export type PublicationPublishResult = {
   rawResponse: Record<string, unknown>;
 };
 
+export class PublisherPublishError extends Error {
+  constructor(
+    message: string,
+    public readonly rawResponse: Record<string, unknown>,
+  ) {
+    super(message);
+    this.name = "PublisherPublishError";
+  }
+}
+
+export function getPublisherErrorRawResponse(error: unknown): Record<string, unknown> | null {
+  if (error instanceof PublisherPublishError) {
+    return error.rawResponse;
+  }
+
+  return null;
+}
+
 export type PublicationPublisher = {
   mode: string;
   component: string;
