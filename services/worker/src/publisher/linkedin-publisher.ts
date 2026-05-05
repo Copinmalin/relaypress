@@ -1,4 +1,6 @@
 import { workerConfig } from "../config.js";
+import { decryptSecret } from "../crypto.js";
+import { pool } from "../db.js";
 import type { ClaimedPublicationJob, PublicationPublisher, PublicationPublishResult } from "./types.js";
 import { PublisherPublishError } from "./types.js";
 
@@ -10,6 +12,15 @@ type LinkedInErrorResponse = {
   status?: unknown;
   code?: unknown;
 };
+
+type LinkedInCredentials = {
+  source: "publisher_accounts" | "env";
+  authorUrn: string;
+  accessToken: string;
+  accountId?: string;
+};
+
+let cachedCredentials: LinkedInCredentials | null = null;
 
 function requireLinkedInPlatform(job: ClaimedPublicationJob): void {
   if (job.platform !== "linkedin") {
@@ -87,17 +98,74 @@ async function readLinkedInError(response: Response): Promise<Record<string, unk
   }
 }
 
+async function loadLinkedInCredentialsFromDatabase(): Promise<LinkedInCredentials | null> {
+  const result = await pool.query<{
+    id: string;
+    account_urn: string;
+    encrypted_access_token: string;
+  }>(
+    `
+      select id, account_urn, encrypted_access_token
+      from publisher_accounts
+      where provider = 'linkedin'
+        and status = 'connected'
+        and encrypted_access_token is not null
+        and (token_expires_at is null or token_expires_at > now())
+      order by updated_at desc
+      limit 1
+    `,
+  );
+
+  const row = result.rows[0];
+  if (!row) return null;
+
+  return {
+    source: "publisher_accounts",
+    accountId: row.id,
+    authorUrn: row.account_urn,
+    accessToken: decryptSecret(row.encrypted_access_token),
+  };
+}
+
+async function loadLinkedInCredentials(): Promise<LinkedInCredentials | null> {
+  if (cachedCredentials) return cachedCredentials;
+
+  const databaseCredentials = await loadLinkedInCredentialsFromDatabase();
+
+  if (databaseCredentials) {
+    cachedCredentials = databaseCredentials;
+    return cachedCredentials;
+  }
+
+  if (workerConfig.linkedinAccessToken && workerConfig.linkedinAuthorUrn) {
+    cachedCredentials = {
+      source: "env",
+      authorUrn: workerConfig.linkedinAuthorUrn,
+      accessToken: workerConfig.linkedinAccessToken,
+    };
+    return cachedCredentials;
+  }
+
+  return null;
+}
+
 async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<PublicationPublishResult> {
   requireLinkedInPlatform(job);
 
+  const credentials = await loadLinkedInCredentials();
+
+  if (!credentials) {
+    throw new Error("LinkedIn publisher credentials are not configured");
+  }
+
   const content = requireContent(job);
   const url = `${workerConfig.linkedinApiBaseUrl}${LINKEDIN_UGC_POSTS_PATH}`;
-  const payload = buildLinkedInPostPayload(workerConfig.linkedinAuthorUrn, content);
+  const payload = buildLinkedInPostPayload(credentials.authorUrn, content);
 
   const response = await fetch(url, {
     method: "POST",
     headers: {
-      Authorization: `Bearer ${workerConfig.linkedinAccessToken}`,
+      Authorization: `Bearer ${credentials.accessToken}`,
       "Content-Type": "application/json",
       "X-Restli-Protocol-Version": "2.0.0",
     },
@@ -118,6 +186,8 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
       statusText: response.statusText,
       error: errorPayload,
       contentLength: content.length,
+      credentialSource: credentials.source,
+      accountId: credentials.accountId,
     });
   }
 
@@ -132,6 +202,8 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
       status: response.status,
       externalPostId,
       contentLength: content.length,
+      credentialSource: credentials.source,
+      accountId: credentials.accountId,
     },
   };
 }
@@ -141,16 +213,19 @@ export function createLinkedInPublisher(): PublicationPublisher {
     mode: "linkedin_real",
     component: "linkedin-publisher",
     supportedPlatforms: ["linkedin"],
-    isReady: () => {
-      if (!workerConfig.linkedinAccessToken) {
-        return { ready: false, reason: "LINKEDIN_ACCESS_TOKEN is missing" };
-      }
+    isReady: async () => {
+      try {
+        const credentials = await loadLinkedInCredentials();
 
-      if (!workerConfig.linkedinAuthorUrn) {
-        return { ready: false, reason: "LINKEDIN_AUTHOR_URN is missing" };
-      }
+        if (!credentials) {
+          return { ready: false, reason: "LinkedIn credentials are not configured" };
+        }
 
-      return { ready: true };
+        return { ready: true };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return { ready: false, reason: message };
+      }
     },
     publish: publishLinkedInPost,
   };
