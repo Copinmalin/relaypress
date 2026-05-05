@@ -4,6 +4,7 @@ import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
+import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
 
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 3000);
@@ -12,6 +13,7 @@ await migrateDatabase();
 
 await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
+await registerPublisherAccountRoutes(app);
 await registerAdminAssets(app);
 await registerAdminPage(app);
 
