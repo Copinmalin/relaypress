@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
 import type { ClaimedPublicationJob, PublicationPublisher } from "./types.js";
+import { getPublisherErrorRawResponse } from "./types.js";
 
 type PublicationRunResult = {
   runId: string;
@@ -114,6 +115,7 @@ async function markRunAsFailed(
   error: unknown,
 ): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
+  const publisherRawResponse = getPublisherErrorRawResponse(error);
 
   await pool.query(
     `
@@ -134,6 +136,8 @@ async function markRunAsFailed(
         component: publisher.component,
         platform: job.platform,
         error: message,
+        contentLength: job.adapted_content?.length ?? 0,
+        publisherResponse: publisherRawResponse,
       },
     ],
   );
