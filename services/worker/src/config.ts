@@ -15,12 +15,17 @@ export function readBooleanEnv(name: string, fallback = false): boolean {
   return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }
 
+function normalizeBaseUrl(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
 export const workerConfig = {
   tickIntervalMs: Number(process.env.WORKER_TICK_INTERVAL_MS ?? 30_000),
   publisherMode: process.env.PUBLISHER_MODE ?? "mock",
   publisherBatchSize: Number(process.env.PUBLISHER_BATCH_SIZE ?? 10),
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
   linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
+  linkedinApiBaseUrl: normalizeBaseUrl(process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/v2"),
   nostrPrivateRelay: process.env.NOSTR_PRIVATE_RELAY ?? "ws://strfry:7777",
   nostrPublicRelays: readCsvEnv("NOSTR_PUBLIC_RELAYS", [
     "wss://relay.damus.io",
