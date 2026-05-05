@@ -1,5 +1,6 @@
 import { workerConfig } from "../config.js";
 import type { ClaimedPublicationJob, PublicationPublisher, PublicationPublishResult } from "./types.js";
+import { PublisherPublishError } from "./types.js";
 
 const LINKEDIN_UGC_POSTS_PATH = "/ugcPosts";
 
@@ -105,12 +106,19 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
 
   if (!response.ok) {
     const errorPayload = await readLinkedInError(response);
+    const message = `LinkedIn API error ${response.status}: ${
+      typeof errorPayload.message === "string" ? errorPayload.message : response.statusText
+    }`;
 
-    throw new Error(
-      `LinkedIn API error ${response.status}: ${
-        typeof errorPayload.message === "string" ? errorPayload.message : response.statusText
-      }`,
-    );
+    throw new PublisherPublishError(message, {
+      ok: false,
+      provider: "linkedin",
+      endpoint: LINKEDIN_UGC_POSTS_PATH,
+      status: response.status,
+      statusText: response.statusText,
+      error: errorPayload,
+      contentLength: content.length,
+    });
   }
 
   const externalPostId = extractExternalPostId(response);
