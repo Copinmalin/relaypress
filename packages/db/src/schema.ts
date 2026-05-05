@@ -1,4 +1,4 @@
-import { index, integer, jsonb, pgTable, text, timestamp, varchar } from "drizzle-orm/pg-core";
+import { index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, varchar } from "drizzle-orm/pg-core";
 
 export const nostrEvents = pgTable(
   "nostr_events",
@@ -62,5 +62,29 @@ export const publicationJobRuns = pgTable(
     platformIdx: index("publication_job_runs_platform_idx").on(table.platform),
     statusIdx: index("publication_job_runs_status_idx").on(table.status),
     startedAtIdx: index("publication_job_runs_started_at_idx").on(table.startedAt),
+  }),
+);
+
+export const publisherAccounts = pgTable(
+  "publisher_accounts",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    accountUrn: varchar("account_urn", { length: 256 }).notNull(),
+    displayName: varchar("display_name", { length: 256 }),
+    status: varchar("status", { length: 64 }).notNull().default("connected"),
+    scopes: jsonb("scopes").notNull().$type<string[]>(),
+    encryptedAccessToken: text("encrypted_access_token").notNull(),
+    encryptedRefreshToken: text("encrypted_refresh_token"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    refreshTokenExpiresAt: timestamp("refresh_token_expires_at", { withTimezone: true }),
+    lastValidatedAt: timestamp("last_validated_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    providerAccountIdx: uniqueIndex("publisher_accounts_provider_account_idx").on(table.provider, table.accountUrn),
+    providerIdx: index("publisher_accounts_provider_idx").on(table.provider),
+    statusIdx: index("publisher_accounts_status_idx").on(table.status),
   }),
 );
