@@ -201,7 +201,7 @@ async function markJobAsPublished(
 
 export async function processApprovedPublicationJobs(): Promise<number> {
   const publisher = selectPublisher();
-  const readiness = publisher.isReady();
+  const readiness = await publisher.isReady();
 
   if (!readiness.ready) {
     console.warn(JSON.stringify({
