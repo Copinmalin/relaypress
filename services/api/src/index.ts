@@ -1,5 +1,6 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
@@ -11,6 +12,7 @@ await migrateDatabase();
 
 await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
+await registerAdminAssets(app);
 await registerAdminPage(app);
 
 app.get("/health", async () => ({
