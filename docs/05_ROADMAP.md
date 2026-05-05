@@ -2,22 +2,20 @@
 
 Cette roadmap doit rester cohérente avec `docs/MASTER_PROJECT_TRACKING.md`, qui est la source de vérité opérationnelle.
 
-## Phase 0 — Cadrage conceptuel
+## Phases terminées
+
+### Phase 0 — Cadrage conceptuel
 
 Statut : ✅ terminé
-
-Résultats :
 
 - vision RelayPress clarifiée ;
 - refus du simple crossposter ;
 - Nostr défini comme plan de contrôle ;
 - IA future définie comme adaptation sous contraintes.
 
-## Phase 1 — Socle dépôt et CI
+### Phase 1 — Socle dépôt et CI
 
 Statut : ✅ terminé
-
-Résultats :
 
 - dépôt GitHub créé ;
 - licence AGPL-3.0-or-later ;
@@ -29,11 +27,9 @@ Résultats :
 - installation `--frozen-lockfile` ;
 - validation Docker Compose.
 
-## Phase 2 — Infrastructure Docker / staging
+### Phase 2 — Infrastructure Docker / staging
 
 Statut : ✅ terminé et validé en staging
-
-Résultats :
 
 - Caddy ;
 - PostgreSQL ;
@@ -44,11 +40,9 @@ Résultats :
 - volumes persistants ;
 - HTTPS staging validé.
 
-## Phase 3 — Indexation Nostr
+### Phase 3 — Indexation Nostr
 
 Statut : ✅ terminé et validé runtime
-
-Résultats :
 
 - connexion au relay privé et aux relays publics configurés ;
 - filtrage par pubkey autorisée ;
@@ -56,11 +50,9 @@ Résultats :
 - logs worker structurés ;
 - création de jobs depuis commandes `/publish` ou tags dédiés.
 
-## Phase 4 — Jobs de publication
+### Phase 4 — Jobs de publication
 
 Statut : ✅ terminé pour MVP
-
-Résultats :
 
 - `publication_jobs` créés depuis Nostr ;
 - `publication_jobs` créés depuis brouillons manuels ;
@@ -70,15 +62,13 @@ Résultats :
 - statuts métier sécurisés ;
 - archivage non destructif.
 
-## Phase 5 — Interface admin v2
+### Phase 5 — Interface admin v2
 
 Statut : ✅ terminé pour MVP
 
-Résultats :
-
 - page admin servie par l’API ;
 - assets CSS/JS séparés ;
-- lecture protégée par `ADMIN_API_TOKEN` ;
+- lecture protégée ;
 - vues À traiter, actifs, archives ;
 - filtres statut, plateforme, ordre ;
 - création de brouillon manuel multi-plateforme ;
@@ -89,11 +79,9 @@ Résultats :
 - runs visibles ;
 - archivage individuel et groupé.
 
-## Phase 6 — Audit d’exécution
+### Phase 6 — Audit d’exécution
 
 Statut : ✅ terminé pour MVP
-
-Résultats :
 
 - table `publication_job_runs` ;
 - un run créé à chaque tentative de publication ;
@@ -101,11 +89,9 @@ Résultats :
 - statut run `started`, `published` ou `failed` ;
 - consultation depuis l’admin.
 
-## Phase A — Prévisualisation éditoriale par plateforme
+### Phase A — Prévisualisation éditoriale par plateforme
 
 Statut : ✅ terminé MVP
-
-Résultats :
 
 - compteur de caractères ;
 - warning contenu vide ;
@@ -114,11 +100,9 @@ Résultats :
 - warning Instagram média non géré ;
 - preview simple dans l’admin.
 
-## Phase B — Anti-doublon / retry / reset
+### Phase B — Anti-doublon / retry / reset
 
 Statut : ✅ terminé MVP
-
-Résultats :
 
 - publication interdite si `external_post_id` existe ;
 - publication interdite si `published_at` existe ;
@@ -128,11 +112,9 @@ Résultats :
 - worker protégé par claim atomique ;
 - transitions invalides en `409`.
 
-## Phase C — Adaptateur LinkedIn propre sans IA
+### Phase C — Adaptateur LinkedIn propre sans IA
 
 Statut : ✅ terminé MVP
-
-Résultats :
 
 - `sourceContent` conservé ;
 - `adaptedContent` LinkedIn structuré ;
@@ -143,52 +125,57 @@ Résultats :
 - correction de la duplication sur texte court ;
 - readapt depuis `sourceContent`.
 
-## Phase D — Couche publisher propre
+### Phase D — Couche publisher propre
 
 Statut : ✅ terminé architecture
 
-Résultats :
-
 - interface `PublicationPublisher` ;
-- `createMockPublisher()` ;
-- `createLinkedInPublisher()` stub ;
+- publisher mock ;
 - orchestrateur publisher ;
-- `supportedPlatforms` par publisher ;
-- `isReady()` avant claim ;
-- `PUBLISHER_MODE=mock` par défaut ;
-- `PUBLISHER_MODE=linkedin_real` préparé mais non actif ;
-- `LINKEDIN_ACCESS_TOKEN` et `LINKEDIN_AUTHOR_URN` préparés.
+- plateformes supportées par publisher ;
+- vérification de disponibilité avant claim ;
+- mode mock conservé par défaut ;
+- mode LinkedIn réel préparé derrière garde-fous.
 
 ## Phase E — Publisher réel LinkedIn
 
-Statut : ⏳ prochaine phase recommandée
+Statut : 🚧 en cours — premier incrément implémenté, non activé en staging
 
-À faire :
+Réalisé :
 
-1. Choisir le mode d’auth LinkedIn adapté : membre ou page organisation.
-2. Finaliser l’app LinkedIn Developer.
-3. Définir le `LINKEDIN_AUTHOR_URN` exact.
-4. Implémenter l’appel API LinkedIn réel dans `linkedin-publisher.ts`.
-5. Gérer les erreurs API dans `publication_job_runs.raw_response`.
-6. Garder `PUBLISHER_MODE=mock` par défaut.
-7. Tester en staging sur un compte ou une page contrôlée.
-8. Ne passer en réel qu’avec validation humaine explicite.
+- configuration d’endpoint LinkedIn ;
+- implémentation du publisher LinkedIn UGC Posts ;
+- activation uniquement via mode publisher explicite ;
+- mode mock conservé par défaut ;
+- vérification de configuration avant claim ;
+- refus de publier un contenu LinkedIn vide ;
+- extraction de l’identifiant externe depuis la réponse LinkedIn ;
+- erreurs LinkedIn nettoyées via erreur typée ;
+- conservation des erreurs API nettoyées dans `publication_job_runs.raw_response`.
 
-## Phase F — Comptes publishers et chiffrement tokens
+À faire avant test réel :
+
+1. Finaliser le mode d’authentification LinkedIn : membre ou page organisation.
+2. Finaliser l’application LinkedIn Developer.
+3. Définir l’URN auteur exact.
+4. Configurer un accès contrôlé sur staging.
+5. Tester sur un compte ou une page contrôlée.
+6. Vérifier le retour API, l’identifiant externe et les runs.
+7. Ne garder le réel activé que pour des fenêtres de test explicites.
+
+## Phase F — Comptes publishers et chiffrement
 
 Statut : ⏳ à faire avant production
-
-À prévoir :
 
 - table `publisher_accounts` ;
 - provider ;
 - account URN ;
 - display name ;
-- access token chiffré ;
-- refresh token chiffré si applicable ;
+- secret d’accès chiffré ;
+- secret de renouvellement chiffré si applicable ;
 - expiration ;
 - scopes ;
-- chiffrement via `TOKEN_ENCRYPTION_KEY`.
+- chiffrement via clé dédiée.
 
 ## Phase G — Publishers X / Meta / Instagram / autres sorties
 
@@ -205,8 +192,6 @@ Ordre recommandé :
 ## Phase H — Production durcie
 
 Statut : ⏳ plus tard
-
-À prévoir :
 
 - sauvegarde PostgreSQL automatisée ;
 - sauvegarde volumes strfry ;
