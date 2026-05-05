@@ -113,7 +113,7 @@ async function upsertPublisherAccount(body: Required<Pick<UpsertPublisherAccount
         last_validated_at,
         created_at,
         updated_at
-      ) values ($1, $2, $3, $4, 'connected', $5, $6, $7, $8, $9, now(), now(), now())
+      ) values ($1, $2, $3, $4, 'connected', $5::jsonb, $6, $7, $8, $9, now(), now(), now())
       on conflict (provider, account_urn) do update set
         display_name = excluded.display_name,
         status = 'connected',
