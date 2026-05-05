@@ -42,6 +42,8 @@ function normalizeScopes(scopes: string[] | undefined): string[] {
 }
 
 function rowToPublisherAccount(row: Record<string, unknown>) {
+  const hasRefreshToken = Boolean(row.encrypted_refresh_token);
+
   return {
     id: row.id,
     provider: row.provider,
@@ -50,12 +52,12 @@ function rowToPublisherAccount(row: Record<string, unknown>) {
     status: row.status,
     scopes: row.scopes,
     tokenExpiresAt: row.token_expires_at,
-    refreshTokenExpiresAt: row.refresh_token_expires_at,
+    refreshTokenExpiresAt: hasRefreshToken ? row.refresh_token_expires_at : null,
     lastValidatedAt: row.last_validated_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     hasAccessToken: Boolean(row.encrypted_access_token),
-    hasRefreshToken: Boolean(row.encrypted_refresh_token),
+    hasRefreshToken,
   };
 }
 
@@ -92,9 +94,10 @@ async function upsertPublisherAccount(body: Required<Pick<UpsertPublisherAccount
   const displayName = body.displayName?.trim() || null;
   const scopes = normalizeScopes(body.scopes);
   const encryptedAccessToken = encryptSecret(body.accessToken);
-  const encryptedRefreshToken = body.refreshToken?.trim() ? encryptSecret(body.refreshToken) : null;
+  const refreshToken = body.refreshToken?.trim() || null;
+  const encryptedRefreshToken = refreshToken ? encryptSecret(refreshToken) : null;
   const tokenExpiresAt = parseIsoDate(body.tokenExpiresAt);
-  const refreshTokenExpiresAt = parseIsoDate(body.refreshTokenExpiresAt);
+  const refreshTokenExpiresAt = encryptedRefreshToken ? parseIsoDate(body.refreshTokenExpiresAt) : null;
   const id = randomUUID();
 
   const result = await pool.query(
@@ -121,7 +124,10 @@ async function upsertPublisherAccount(body: Required<Pick<UpsertPublisherAccount
         encrypted_access_token = excluded.encrypted_access_token,
         encrypted_refresh_token = coalesce(excluded.encrypted_refresh_token, publisher_accounts.encrypted_refresh_token),
         token_expires_at = excluded.token_expires_at,
-        refresh_token_expires_at = coalesce(excluded.refresh_token_expires_at, publisher_accounts.refresh_token_expires_at),
+        refresh_token_expires_at = case
+          when excluded.encrypted_refresh_token is not null then excluded.refresh_token_expires_at
+          else publisher_accounts.refresh_token_expires_at
+        end,
         last_validated_at = now(),
         updated_at = now()
       returning id
