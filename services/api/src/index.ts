@@ -1,11 +1,13 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerAdminPage } from "./admin-page.js";
-import { closeDatabase } from "./db.js";
+import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 3000);
+
+await migrateDatabase();
 
 await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
