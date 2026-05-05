@@ -2,51 +2,80 @@
 
 **RelayPress** est un système d’orchestration éditoriale souverain piloté par Nostr.
 
-L’objectif n’est pas de faire un simple crossposter. L’objectif est de construire une infrastructure où Nostr sert de registre canonique, de bus d’événements et de plan de contrôle pour produire, programmer, valider et diffuser du contenu vers des plateformes externes comme X, LinkedIn, Facebook, Instagram, Mastodon ou WordPress.
+L’objectif n’est pas de faire un simple crossposter. RelayPress sépare l’intention éditoriale signée, l’état métier opérationnel, l’adaptation par plateforme, la validation humaine, la publication et l’audit d’exécution.
+
+## État actuel
+
+Le dépôt contient aujourd’hui un MVP éditorial fonctionnel en staging :
+
+- monorepo pnpm avec Node 24 et TypeScript NodeNext ;
+- CI GitHub Actions avec `pnpm-lock.yaml` obligatoire ;
+- stack Docker Compose : Caddy, PostgreSQL, Redis, strfry, API et worker ;
+- relay Nostr privé via strfry ;
+- indexation Nostr filtrée par pubkey autorisée ;
+- création de jobs éditoriaux depuis Nostr ou depuis l’interface admin ;
+- conservation séparée de `sourceContent` et `adaptedContent` ;
+- adaptation déterministe par plateforme, dont LinkedIn sans IA ;
+- interface admin pour créer, lire, éditer, réadapter, valider, rejeter, relancer et archiver ;
+- publisher mock isolé derrière une interface commune ;
+- historique d’exécution dans `publication_job_runs` ;
+- stub LinkedIn réel préparé, non activé par défaut.
+
+Le mode de publication réel reste volontairement désactivé. `PUBLISHER_MODE=mock` est la configuration sûre par défaut.
 
 ## Vision
 
 ```txt
-Nostr = journal souverain + bus de commande + source éditoriale
-Relay privé = registre canonique des intentions signées
-IA = moteur de génération, adaptation et contrôle qualité
-PostgreSQL = état métier applicatif
-Queue = exécution fiable des jobs
-Plateformes sociales = canaux de distribution secondaires
+Nostr = intention signée + journal souverain + plan de contrôle
+Relay privé = registre canonique des événements éditoriaux
+PostgreSQL = état métier opérationnel
+Worker = moteur d’indexation, de transformation et de publication
+API admin = pilotage éditorial humain
+Publishers = sorties vers plateformes externes
+IA = adaptation sous contraintes, plus tard
 ```
 
-## Objectifs
+## Workflow MVP
 
-- Publier depuis Nostr sans dépendre d’un back-office propriétaire.
-- Configurer des scénarios éditoriaux via événements Nostr signés.
-- Générer du contenu avec une IA encadrée par des règles.
-- Programmer des campagnes de publication.
-- Adapter automatiquement les contenus à chaque plateforme.
-- Conserver un audit complet : intention, génération, validation, publication, résultat.
-- Héberger l’ensemble avec Docker et Caddy sur un serveur souverain.
+```txt
+Nostr event ou brouillon manuel
+→ création de jobs éditoriaux
+→ adaptation minimale / déterministe selon plateforme
+→ comparaison source originale / version adaptée
+→ édition humaine
+→ validation
+→ publication mock
+→ audit des exécutions
+→ archivage non destructif
+```
 
 ## Principes non négociables
 
-- Pas de stockage de `nsec` en clair.
+- Nostr reste la racine souveraine des intentions éditoriales.
+- PostgreSQL porte l’état métier opérationnel.
+- Aucun `nsec` ne doit être stocké en clair.
+- Les tokens OAuth devront être chiffrés avant tout branchement réel.
 - Pas de scraping de réseaux sociaux.
-- Publication via API officielles.
-- Validation humaine obligatoire pour les contenus sensibles.
-- Journalisation des intentions et résultats dans Nostr.
-- Architecture modulaire : relay, API, worker, IA, publishers.
+- Publication externe uniquement via API officielles.
+- Les contenus sensibles doivent rester soumis à validation humaine.
+- Les actions importantes doivent être auditables.
+- Le mode `mock` reste le mode par défaut tant que LinkedIn réel n’est pas durci.
 
 ## Structure du dépôt
 
 ```txt
 .
-├── docs/                    # Vision, architecture, sécurité, modèle Nostr
-├── infra/                   # Caddy, relay, configuration serveur
+├── .github/workflows/       # CI et génération du lockfile
+├── docs/                    # Vision, architecture, sécurité, roadmap, suivi maître
+├── infra/                   # Caddy et configuration strfry
+├── packages/db/             # Initialisation et accès PostgreSQL
 ├── packages/shared/         # Types et constantes partagés
-├── services/api/            # API HTTP + console d’administration future
-├── services/worker/         # Indexer Nostr, scheduler, IA, publication
-├── scripts/                 # Scripts d’initialisation et déploiement
-├── docker-compose.yml       # Stack locale / serveur
+├── services/api/            # API Fastify + interface admin + assets admin
+├── services/worker/         # Indexer Nostr + orchestrateur publisher
+├── scripts/                 # Validation locale
+├── docker-compose.yml       # Stack locale / staging
 ├── .env.example             # Variables d’environnement documentées
-└── README.md
+└── pnpm-lock.yaml           # Lockfile obligatoire
 ```
 
 ## Démarrage local
@@ -54,7 +83,7 @@ Plateformes sociales = canaux de distribution secondaires
 ```bash
 cp .env.example .env
 pnpm install
-pnpm dev
+pnpm check
 ```
 
 Avec Docker :
@@ -62,6 +91,21 @@ Avec Docker :
 ```bash
 docker compose up -d --build
 ```
+
+## Déploiement staging
+
+```bash
+cd /opt/relaypress
+git pull
+docker compose up -d --build
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+```
+
+## Documentation de référence
+
+Le fichier `docs/MASTER_PROJECT_TRACKING.md` est la source de vérité opérationnelle du projet. Les autres documents doivent rester cohérents avec lui.
 
 ## Licence
 
