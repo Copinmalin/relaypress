@@ -60,5 +60,25 @@ export async function migrate(pool: Pool): Promise<void> {
     create index if not exists publication_job_runs_platform_idx on publication_job_runs(platform);
     create index if not exists publication_job_runs_status_idx on publication_job_runs(status);
     create index if not exists publication_job_runs_started_at_idx on publication_job_runs(started_at);
+
+    create table if not exists publisher_accounts (
+      id varchar(128) primary key,
+      provider varchar(64) not null,
+      account_urn varchar(256) not null,
+      display_name varchar(256),
+      status varchar(64) not null default 'connected',
+      scopes jsonb not null default '[]'::jsonb,
+      encrypted_access_token text not null,
+      encrypted_refresh_token text,
+      token_expires_at timestamptz,
+      refresh_token_expires_at timestamptz,
+      last_validated_at timestamptz,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create unique index if not exists publisher_accounts_provider_account_idx on publisher_accounts(provider, account_urn);
+    create index if not exists publisher_accounts_provider_idx on publisher_accounts(provider);
+    create index if not exists publisher_accounts_status_idx on publisher_accounts(status);
   `);
 }
