@@ -330,6 +330,66 @@ async function updatePublicationJobContent(id: string, content: string) {
   return findPublicationJobById(id);
 }
 
+async function readaptPublicationJobContent(id: string) {
+  const current = await pool.query(
+    `
+      select id, platform, status, source_content, adapted_content, external_post_id, published_at
+      from publication_jobs
+      where id = $1
+      limit 1
+    `,
+    [id],
+  );
+
+  const row = current.rows[0];
+  if (!row) {
+    return null;
+  }
+
+  if (
+    !["pending", "pending_review", "rejected", "failed"].includes(row.status) ||
+    row.external_post_id !== null ||
+    row.published_at !== null
+  ) {
+    return null;
+  }
+
+  const sourceContent = String(row.source_content ?? row.adapted_content ?? "").trim();
+  const adapted = adaptPublicationContent(sourceContent, row.platform as PublicationTarget);
+
+  const result = await pool.query(
+    `
+      update publication_jobs
+      set
+        source_content = $2,
+        adapted_content = $3,
+        status = case
+          when status in ('rejected', 'failed') then 'pending_review'
+          else status
+        end,
+        error_message = $4,
+        updated_at = now()
+      where id = $1
+        and status in ('pending', 'pending_review', 'rejected', 'failed')
+        and external_post_id is null
+        and published_at is null
+      returning id
+    `,
+    [
+      id,
+      adapted.sourceContent,
+      adapted.content,
+      adapted.warnings.length > 0 ? adapted.warnings.join(",") : null,
+    ],
+  );
+
+  if (result.rowCount === 0) {
+    return null;
+  }
+
+  return findPublicationJobById(id);
+}
+
 export async function registerPublicationJobRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: PublicationJobsQuery }>(
     "/publication-jobs",
@@ -498,6 +558,23 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
         return reply.code(409).send({
           error: "content_not_editable",
           message: "Only unpublished pending, pending_review, rejected or failed jobs can be edited",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/readapt",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await readaptPublicationJobContent(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "job_not_readaptable",
+          message: "Only unpublished pending, pending_review, rejected or failed jobs can be readapted from sourceContent",
         });
       }
 
