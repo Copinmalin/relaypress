@@ -5,7 +5,7 @@ Ce document est la **source de vérité opérationnelle** du projet RelayPress.
 Il doit être mis à jour à chaque étape structurante : changement d’architecture, nouveau workflow validé, nouveau statut métier, changement de sécurité, déploiement, ou décision produit importante.
 
 **Dernière mise à jour : 2026-05-05**  
-**État global : MVP technique éditorial fonctionnel en staging**
+**État global : MVP éditorial souverain fonctionnel en staging, Phase D publisher abstraction validée**
 
 ---
 
@@ -13,9 +13,7 @@ Il doit être mis à jour à chaque étape structurante : changement d’archite
 
 RelayPress est un système d’orchestration éditoriale souverain, piloté par Nostr, destiné à préparer, valider, adapter, publier et auditer des contenus vers plusieurs plateformes.
 
-L’objectif n’est pas de créer un simple crossposter. L’objectif est de construire une infrastructure où Nostr sert de racine souveraine et où PostgreSQL porte l’état métier opérationnel.
-
-### Formule de conception
+RelayPress n’est pas un simple crossposter. Le principe est de séparer clairement :
 
 ```txt
 Nostr = intention signée + journal souverain + plan de contrôle
@@ -27,13 +25,13 @@ Publishers = sorties vers plateformes externes
 IA = adaptation sous contraintes, plus tard
 ```
 
-### Positionnement actuel
-
-RelayPress est aujourd’hui un **prototype fonctionnel déployé** permettant :
+État fonctionnel actuel :
 
 ```txt
 Nostr event ou brouillon manuel
 → création de jobs éditoriaux
+→ adaptation minimale / déterministe selon plateforme
+→ comparaison source originale / version adaptée
 → édition humaine
 → validation
 → publication mock
@@ -41,7 +39,7 @@ Nostr event ou brouillon manuel
 → archivage non destructif
 ```
 
-Le système ne publie pas encore réellement vers LinkedIn, X, Facebook ou Instagram. La publication réelle doit venir seulement après stabilisation éditoriale et anti-doublon.
+Le système ne publie pas encore réellement vers LinkedIn, X, Facebook ou Instagram. La couche de publisher réel LinkedIn est préparée, mais volontairement non connectée.
 
 ---
 
@@ -57,9 +55,11 @@ Le système ne publie pas encore réellement vers LinkedIn, X, Facebook ou Insta
 - Les actions importantes doivent être auditables.
 - Les runs de publication doivent rester conservés.
 - L’archivage ne doit pas supprimer l’historique.
+- Un job déjà publié ne doit jamais être republié accidentellement.
 - Le lockfile `pnpm-lock.yaml` est obligatoire.
 - Node 24 est la cible runtime et CI.
 - Docker Compose est la base de reproductibilité staging.
+- Le mode `mock` reste le mode par défaut tant que LinkedIn réel n’est pas durci.
 
 ---
 
@@ -91,13 +91,20 @@ Statut : **buildable, déployé, testé en staging**
 ✅ Filtrage par pubkey autorisée
 ✅ Persistance Nostr dans PostgreSQL
 ✅ Création de publication_jobs
-✅ Adaptateur minimal de contenu
-✅ Publisher mock
+✅ sourceContent conservé séparément de adaptedContent
+✅ Adaptateur minimal multi-plateforme
+✅ Adaptateur LinkedIn déterministe
+✅ Action readapt depuis sourceContent
+✅ Publisher mock isolé derrière interface commune
+✅ Orchestrateur publisher
+✅ Stub LinkedIn réel non actif
 ✅ Historique publication_job_runs
-✅ Interface admin minimale
+✅ Interface admin extraite en assets CSS/JS
 ✅ Brouillons manuels depuis l’admin
 ✅ Édition avant validation
 ✅ Validation / rejet
+✅ Retry sur failed
+✅ Reset review sur rejected / failed
 ✅ Archivage individuel
 ✅ Archivage groupé des jobs terminés
 ✅ Lecture API protégée par ADMIN_API_TOKEN
@@ -127,7 +134,19 @@ Statut : **buildable, déployé, testé en staging**
 │   └── shared/
 ├── services/
 │   ├── api/
+│   │   └── src/
+│   │       ├── admin-assets.ts
+│   │       ├── admin-page-v2.ts
+│   │       ├── content-adapter.ts
+│   │       └── publication-jobs.ts
 │   └── worker/
+│       └── src/
+│           ├── nostr/
+│           └── publisher/
+│               ├── index.ts
+│               ├── linkedin-publisher.ts
+│               ├── mock-publisher.ts
+│               └── types.ts
 ├── scripts/
 │   └── validate-local.sh
 ├── docker-compose.yml
@@ -184,6 +203,8 @@ https://api.relaypress.copinmalin.top/health
 https://app.relaypress.copinmalin.top/health
 https://relay.relaypress.copinmalin.top
 https://api.relaypress.copinmalin.top/admin
+https://api.relaypress.copinmalin.top/assets/admin.css
+https://api.relaypress.copinmalin.top/assets/admin.js
 ```
 
 ---
@@ -218,16 +239,19 @@ caddy    = reverse proxy HTTPS
 postgres = base métier
 redis    = queue/cache futur
 strfry   = relay Nostr privé
-api      = API Fastify + interface admin
-worker   = indexation Nostr + publication mock
+api      = API Fastify + interface admin + assets admin
+worker   = indexation Nostr + orchestration publisher
 ```
 
-Commande de déploiement staging :
+Commande de déploiement staging complet :
 
 ```bash
 cd /opt/relaypress
 git pull
 docker compose up -d --build
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
 ```
 
 Redéploiement API seul :
@@ -236,6 +260,9 @@ Redéploiement API seul :
 cd /opt/relaypress
 git pull
 docker compose up -d --build api
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
 ```
 
 Redéploiement worker seul :
@@ -244,7 +271,12 @@ Redéploiement worker seul :
 cd /opt/relaypress
 git pull
 docker compose up -d --build worker
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
 ```
+
+Note opérationnelle : le token admin shell est souvent perdu entre sessions. Les commandes de test doivent donc toujours commencer par le recharger depuis `.env`.
 
 ---
 
@@ -276,6 +308,10 @@ TOKEN_ENCRYPTION_KEY
 SESSION_SECRET
 AI_PROVIDER
 PUBLISHER_MODE
+PUBLISHER_BATCH_SIZE
+WORKER_TICK_INTERVAL_MS
+LINKEDIN_ACCESS_TOKEN
+LINKEDIN_AUTHOR_URN
 OPENAI_API_KEY
 MISTRAL_API_KEY
 OLLAMA_BASE_URL
@@ -299,6 +335,15 @@ NOSTR_ALLOWED_PUBKEYS=<clé publique autorisée>
 NOSTR_PRIVATE_RELAY=ws://strfry:7777
 ```
 
+Variables LinkedIn préparées mais non utilisées en production réelle :
+
+```txt
+LINKEDIN_ACCESS_TOKEN=
+LINKEDIN_AUTHOR_URN=
+```
+
+En mode `PUBLISHER_MODE=linkedin_real`, si ces variables sont absentes, le worker ne claim pas les jobs et logue `publisher_not_ready`.
+
 ---
 
 ## 7. API actuelle
@@ -312,9 +357,13 @@ Stack : Fastify
 GET /
 GET /health
 GET /admin
+GET /assets/admin.css
+GET /assets/admin.js
 ```
 
-`/admin` sert la page HTML, mais les données éditoriales ne sont pas lisibles sans token.
+`/admin` sert la page HTML. Les assets admin sont servis avec `Cache-Control: no-store` pour limiter les problèmes de cache pendant le staging.
+
+Les données éditoriales ne sont pas lisibles sans token.
 
 ### Endpoints protégés par `ADMIN_API_TOKEN`
 
@@ -332,8 +381,11 @@ GET /publication-jobs/:id/runs
 ```txt
 POST /publication-jobs/manual-draft
 POST /publication-jobs/:id/content
+POST /publication-jobs/:id/readapt
 POST /publication-jobs/:id/approve
 POST /publication-jobs/:id/reject
+POST /publication-jobs/:id/retry
+POST /publication-jobs/:id/reset-review
 POST /publication-jobs/:id/archive
 ```
 
@@ -359,9 +411,23 @@ Retourne les jobs archivés.
 
 Sans `view` et sans `status`, la liste exclut les archives par défaut.
 
+Filtres disponibles :
+
+```txt
+status=<status>
+platform=x|linkedin|facebook|instagram
+order=asc|desc
+limit=<1..200>
+```
+
 ### Exemple avec token
 
 ```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+
 curl -s \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" \
   "https://api.relaypress.copinmalin.top/publication-jobs?view=todo&order=desc" | jq
@@ -377,6 +443,14 @@ URL :
 https://api.relaypress.copinmalin.top/admin
 ```
 
+Implémentation actuelle :
+
+```txt
+GET /admin              → admin-page-v2.ts
+GET /assets/admin.css   → admin-assets.ts
+GET /assets/admin.js    → admin-assets.ts
+```
+
 Fonctions validées :
 
 ```txt
@@ -389,9 +463,16 @@ Fonctions validées :
 ✅ ordre asc/desc
 ✅ création de brouillon manuel
 ✅ création multi-plateforme
-✅ édition du contenu avant validation
+✅ comparaison source originale / version adaptée
+✅ édition du adaptedContent avant validation
+✅ réadaptation depuis sourceContent
+✅ prévisualisation simple par plateforme
+✅ compteur de caractères
+✅ warnings simples : contenu vide, X trop long, routage encore présent, Instagram non géré
 ✅ approbation
 ✅ rejet avec raison
+✅ retry sur failed
+✅ reset review sur rejected / failed
 ✅ publication mock après approbation
 ✅ visualisation des runs
 ✅ copie d’ID
@@ -463,6 +544,7 @@ id
 source_event_id
 platform
 status
+source_content
 adapted_content
 external_post_id
 error_message
@@ -472,7 +554,13 @@ created_at
 updated_at
 ```
 
-`source_event_id` peut être `null` pour les brouillons manuels créés depuis l’interface.
+Points importants :
+
+```txt
+source_content  = texte source nettoyé et conservé
+adapted_content = texte éditorial réellement utilisé pour validation/publication
+source_event_id = null pour les brouillons manuels créés depuis l’admin
+```
 
 IDs observés :
 
@@ -523,7 +611,7 @@ archived        = conservé pour audit, masqué des vues actives
 
 ```txt
 pending / pending_review
-→ edit content
+→ edit content / readapt from source
 → approve
 → approved
 → worker
@@ -540,13 +628,33 @@ approved
 → worker
 → publishing
 → failed
-→ edit content
+→ retry
+→ approved
+→ worker
+```
+
+ou :
+
+```txt
+failed / rejected
+→ reset-review
 → pending_review
+→ edit / readapt
 → approve
+→ worker
 → published
 ```
 
-La mécanique de retry dédiée n’est pas encore implémentée.
+### Transitions sécurisées
+
+```txt
+approve       : pending / pending_review seulement, si non publié
+reject        : pending / pending_review / approved seulement, si non publié
+retry         : failed seulement, si non publié
+reset-review  : rejected / failed seulement, si non publié
+readapt       : pending / pending_review / rejected / failed seulement, si non publié
+archive       : interdit si publishing
+```
 
 ---
 
@@ -601,15 +709,28 @@ Commande validée :
 Texte à publier
 ```
 
+ou via tags :
+
+```txt
+#publish #x
+```
+
 Résultat :
 
 ```txt
 publication_jobs pour x
 publication_jobs pour linkedin
-adapted_content = texte nettoyé
+source_content = texte nettoyé
+adapted_content = texte adapté à la plateforme
 ```
 
-Adaptation minimale actuelle : suppression de la ligne de commande `/publish ...`.
+Nettoyage actuel :
+
+```txt
+- suppression de la ligne /publish ...
+- suppression de #publish et #relaypress
+- normalisation whitespace
+```
 
 ### 12.2 Depuis l’interface admin
 
@@ -617,10 +738,11 @@ Workflow validé :
 
 ```txt
 Nouveau brouillon manuel
-→ contenu
+→ contenu source
 → plateformes cochées
 → création de jobs pending_review
-→ édition
+→ comparaison source/adapted
+→ édition ou réadaptation
 → approbation
 → publication mock
 → archivage
@@ -635,9 +757,117 @@ id = manual:<uuid>:<platform>
 
 ---
 
-## 13. Publisher mock
+## 13. Adaptateurs de contenu actuels
 
-Le publisher actuel ne publie pas réellement vers une plateforme externe.
+### 13.1 Base commune
+
+Fonctions actuelles :
+
+```txt
+cleanSourceContent(content)
+adaptPublicationContent(sourceContent, platform)
+```
+
+Nettoyage commun :
+
+```txt
+- retire /publish ...
+- retire #publish
+- retire #relaypress
+- normalise les lignes et les paragraphes
+```
+
+### 13.2 X
+
+```txt
+adaptedContent = sourceContent nettoyé
+warning si > 140 caractères
+```
+
+La limite 140 est une règle éditoriale temporaire, pas une limite technique définitive.
+
+### 13.3 LinkedIn
+
+Adaptateur déterministe sans IA.
+
+Sortie :
+
+```txt
+accroche
+
+paragraphes éventuels
+
+appel à discussion
+
+hashtags
+```
+
+Exemple validé :
+
+```txt
+sourceContent:
+bitcoin permet de reprendre la main sur sa souveraineté numérique
+
+adaptedContent:
+Bitcoin permet de reprendre la main sur sa souveraineté numérique.
+
+Et vous, comment abordez-vous ce sujet ?
+
+#Bitcoin #SouverainetéNumérique #RelayPress
+```
+
+Correction appliquée : un texte en un seul paragraphe n’est plus dupliqué entre accroche et corps.
+
+### 13.4 Facebook
+
+```txt
+adaptedContent = sourceContent nettoyé
+```
+
+### 13.5 Instagram
+
+```txt
+adaptedContent = sourceContent nettoyé
+warning : média/caption à traiter plus tard
+```
+
+### 13.6 Réadaptation
+
+Endpoint :
+
+```txt
+POST /publication-jobs/:id/readapt
+```
+
+Rôle : régénérer `adapted_content` depuis `source_content` sans recréer un job.
+
+Sécurité : interdit sur les jobs publiés, approuvés, en publication ou archivés.
+
+---
+
+## 14. Publisher actuel
+
+### 14.1 Orchestrateur publisher
+
+Le worker n’appelle plus directement le mock publisher. Il appelle :
+
+```txt
+services/worker/src/publisher/index.ts
+```
+
+Cet orchestrateur :
+
+```txt
+- lit PUBLISHER_MODE
+- sélectionne un publisher
+- vérifie publisher.isReady()
+- claim uniquement les jobs compatibles avec supportedPlatforms
+- crée publication_job_runs
+- publie ou échoue proprement
+- écrit raw_response
+```
+
+### 14.2 Publisher mock
 
 Mode :
 
@@ -650,17 +880,47 @@ Comportement :
 ```txt
 approved
 → worker détecte le job
-→ création publication_job_runs
+→ status publishing
+→ création publication_job_runs started
+→ mock publisher
 → status published
 → external_post_id = mock:<platform>:<job_id>
+→ publication_job_runs status published
 → published_at renseigné
 ```
 
 Objectif : tester tout le pipeline sans risque de publication publique.
 
+### 14.3 Stub LinkedIn réel
+
+Mode préparé :
+
+```txt
+PUBLISHER_MODE=linkedin_real
+```
+
+Fichiers :
+
+```txt
+services/worker/src/publisher/linkedin-publisher.ts
+services/worker/src/publisher/types.ts
+```
+
+Comportement actuel :
+
+```txt
+- ne publie pas encore réellement
+- vérifie LINKEDIN_ACCESS_TOKEN
+- vérifie LINKEDIN_AUTHOR_URN
+- si config absente : worker skip sans claim les jobs
+- si appelé sans implémentation réelle : erreur explicite
+```
+
+Décision : ne pas connecter l’API LinkedIn réelle tant que l’OAuth, le stockage chiffré et les erreurs API ne sont pas correctement modélisés.
+
 ---
 
-## 14. Sécurité actuelle
+## 15. Sécurité actuelle
 
 ### Validé
 
@@ -669,8 +929,11 @@ Objectif : tester tout le pipeline sans risque de publication publique.
 ✅ HTTPS via Caddy
 ✅ endpoints de jobs protégés par ADMIN_API_TOKEN
 ✅ interface admin ne lit pas les données sans token
+✅ assets admin publics mais sans contenu éditorial
 ✅ pas de token OAuth réel en base
 ✅ publisher réel non activé
+✅ worker ne claim pas en mode linkedin_real si config incomplète
+✅ jobs déjà publiés protégés contre approve/retry/readapt/reset
 ```
 
 ### À renforcer plus tard
@@ -687,41 +950,49 @@ Objectif : tester tout le pipeline sans risque de publication publique.
 - alertes
 ```
 
-Note : `ADMIN_API_TOKEN` dans localStorage est acceptable pour ce staging technique, mais pas pour une production multi-utilisateur.
+Note : `ADMIN_API_TOKEN` dans localStorage est acceptable pour ce staging technique mono-utilisateur, mais pas pour une production multi-utilisateur.
 
 ---
 
-## 15. Décisions d’architecture prises
+## 16. Décisions d’architecture prises
 
-### 15.1 Nostr reste la racine souveraine
+### 16.1 Nostr reste la racine souveraine
 
 L’interface admin ajoute une facilité opérationnelle, mais ne remplace pas la vision Nostr comme plan de contrôle.
 
-### 15.2 PostgreSQL porte l’état métier
+### 16.2 PostgreSQL porte l’état métier
 
 Le relay Nostr n’est pas utilisé comme base métier. Il reste un journal et un bus d’intentions.
 
-### 15.3 Le publisher mock précède les publishers réels
+### 16.3 `sourceContent` et `adaptedContent` sont séparés
 
-Décision validée : aucun branchement réel LinkedIn/X/Meta tant que l’édition, l’audit et l’anti-doublon ne sont pas solides.
+Décision validée : ne jamais perdre la source originale nettoyée. L’adaptation doit rester réversible et auditable.
 
-### 15.4 L’interface admin est minimaliste mais suffisante
+### 16.4 Le publisher mock précède les publishers réels
 
-À ce stade, l’admin sert à faire le nécessaire : créer, lire, éditer, valider, publier mock, archiver, auditer.
+Décision validée : aucun branchement réel LinkedIn/X/Meta tant que l’édition, l’audit, l’anti-doublon et la configuration publisher ne sont pas solides.
 
-### 15.5 L’archivage est non destructif
+### 16.5 L’interface admin est volontairement utilitaire
+
+L’admin sert à créer, lire, éditer, valider, réadapter, publier en mock, archiver et auditer. Le polish produit viendra après le publisher réel.
+
+### 16.6 L’archivage est non destructif
 
 Un job archivé reste dans la base avec ses runs. Il est seulement masqué des vues actives.
 
-### 15.6 Les lectures de jobs sont privées
+### 16.7 Les lectures de jobs sont privées
 
 Les contenus éditoriaux ne doivent pas être exposés publiquement, même en staging.
 
+### 16.8 Les assets admin sont séparés
+
+Décision prise après régression UI : sortir le CSS et le JS de la page HTML pour éviter que l’interface ne devienne incontrôlable.
+
 ---
 
-## 16. Phases projet
+## 17. Phases projet
 
-## Phase 0 — Cadrage conceptuel
+### Phase 0 — Cadrage conceptuel
 
 Statut :
 
@@ -738,9 +1009,7 @@ Résultats :
 - IA future définie comme adaptation sous contraintes
 ```
 
----
-
-## Phase 1 — Socle dépôt et CI
+### Phase 1 — Socle dépôt et CI
 
 Statut :
 
@@ -761,9 +1030,7 @@ Résultats :
 - docker compose config/build vérifié
 ```
 
----
-
-## Phase 2 — Infrastructure Docker
+### Phase 2 — Infrastructure Docker
 
 Statut :
 
@@ -784,9 +1051,7 @@ Résultats :
 - HTTPS validé
 ```
 
----
-
-## Phase 3 — Indexation Nostr
+### Phase 3 — Indexation Nostr
 
 Statut :
 
@@ -803,9 +1068,7 @@ Résultats :
 - logs worker structurés
 ```
 
----
-
-## Phase 4 — Jobs de publication
+### Phase 4 — Jobs de publication
 
 Statut :
 
@@ -818,18 +1081,17 @@ Résultats :
 ```txt
 - publication_jobs créés depuis Nostr
 - publication_jobs créés depuis brouillon manuel
-- adaptation minimale du contenu
+- source_content conservé
+- adapted_content par plateforme
 - multi-plateforme par job séparé
 ```
 
----
-
-## Phase 5 — Interface admin minimale
+### Phase 5 — Interface admin minimale
 
 Statut :
 
 ```txt
-✅ Terminé pour MVP
+✅ Terminé pour MVP et stabilisé en admin v2
 ```
 
 Résultats :
@@ -841,14 +1103,16 @@ Résultats :
 - édition
 - validation
 - rejet
+- readapt
+- retry
+- reset review
 - runs
 - archivage individuel
 - archivage groupé
+- assets CSS/JS séparés
 ```
 
----
-
-## Phase 6 — Audit d’exécution
+### Phase 6 — Audit d’exécution
 
 Statut :
 
@@ -865,9 +1129,89 @@ Résultats :
 - consultation des runs depuis l’admin
 ```
 
----
+### Phase A — Prévisualisation éditoriale par plateforme
 
-## Phase 7 — Stabilisation éditoriale
+Statut :
+
+```txt
+✅ Terminé MVP
+```
+
+Résultats :
+
+```txt
+- compteur caractères
+- warning contenu vide
+- warning X trop long
+- warning routage encore visible
+- warning Instagram média non géré
+- preview simple dans l’admin
+```
+
+### Phase B — Anti-doublon / retry / reset
+
+Statut :
+
+```txt
+✅ Terminé MVP
+```
+
+Résultats :
+
+```txt
+- publication interdite si external_post_id existe
+- publication interdite si published_at existe
+- approve bloqué sur published
+- retry uniquement sur failed
+- reset-review sur rejected / failed
+- worker protégé par claim status approved + external_post_id null + published_at null
+- transitions invalides retournent 409
+```
+
+### Phase C — Adaptateur LinkedIn propre sans IA
+
+Statut :
+
+```txt
+✅ Terminé MVP
+```
+
+Résultats :
+
+```txt
+- sourceContent conservé
+- adaptedContent LinkedIn structuré
+- accroche
+- paragraphes courts
+- appel à discussion
+- hashtags
+- correction de la duplication sur texte court
+- readapt depuis sourceContent
+```
+
+### Phase D — Couche publisher propre
+
+Statut :
+
+```txt
+✅ Terminé architecture
+```
+
+Résultats :
+
+```txt
+- interface PublicationPublisher
+- createMockPublisher()
+- createLinkedInPublisher() stub
+- publisher orchestrator
+- supportedPlatforms par publisher
+- isReady avant claim
+- PUBLISHER_MODE=mock conservé
+- PUBLISHER_MODE=linkedin_real préparé mais non actif
+- LINKEDIN_ACCESS_TOKEN et LINKEDIN_AUTHOR_URN préparés
+```
+
+### Phase E — Publisher réel LinkedIn
 
 Statut :
 
@@ -875,109 +1219,43 @@ Statut :
 ⏳ Prochaine phase recommandée
 ```
 
-Objectif : rendre l’outil confortable et sûr avant publication réelle.
-
 À faire :
 
 ```txt
-1. Prévisualisation par plateforme
-2. Compteur de caractères
-3. Warnings de contenu vide/trop long
-4. Limites X configurables
-5. Prévisualisation LinkedIn long format
-6. Bouton dupliquer en brouillon
-7. Marqueurs visuels “prêt / à corriger”
+1. Choisir le mode d’auth LinkedIn adapté : membre ou page organisation
+2. Finaliser l’app LinkedIn Developer
+3. Définir LINKEDIN_AUTHOR_URN exact
+4. Implémenter l’appel API LinkedIn réel dans linkedin-publisher.ts
+5. Gérer les erreurs API dans publication_job_runs.raw_response
+6. Garder PUBLISHER_MODE=mock par défaut
+7. Tester en staging sur un compte/page contrôlé
+8. Ne passer en réel qu’avec validation humaine explicite
 ```
 
----
-
-## Phase 8 — Anti-doublon / retry / reset
+### Phase F — Comptes publishers et chiffrement tokens
 
 Statut :
 
 ```txt
-⏳ À faire avant publisher réel
-```
-
-À faire :
-
-```txt
-1. Empêcher publication si external_post_id existe
-2. Bloquer double publication d’un job published
-3. Ajouter retry sur failed
-4. Ajouter reset to pending_review sur rejected/failed
-5. Ajouter mécanisme de verrouillage plus strict côté worker
-6. Éventuellement séparer archived_at de status plus tard
-```
-
----
-
-## Phase 9 — Adaptateurs de contenu sérieux
-
-Statut :
-
-```txt
-⏳ À faire
-```
-
-Règles cibles :
-
-```txt
-X:
-- texte court
-- compteur
-- limite configurable
-- warning avant coupe
-
-LinkedIn:
-- format long
-- paragraphes aérés
-- ton professionnel
-
-Facebook:
-- texte plus conversationnel
-
-Instagram:
-- caption seulement pour l’instant
-- média obligatoire plus tard
-```
-
----
-
-## Phase 10 — Publisher réel LinkedIn
-
-Statut :
-
-```txt
-⏳ À faire après stabilisation
-```
-
-Recommandation : commencer par LinkedIn.
-
-Raisons :
-
-```txt
-- plus adapté à B-Conseil / AlpineChain / B-Only
-- meilleure valeur business
-- format long accepté
-- moins fragile éditorialement que X
+⏳ À faire avant production
 ```
 
 À prévoir :
 
 ```txt
-- OAuth LinkedIn
 - table publisher_accounts
-- stockage chiffré des tokens
-- refresh tokens
-- mapping compte/page
-- publication réelle en staging
-- erreurs API dans publication_job_runs
+- provider
+- account_urn
+- display_name
+- encrypted_access_token
+- encrypted_refresh_token si applicable
+- token_expires_at
+- scopes
+- created_at / updated_at
+- chiffrement avec TOKEN_ENCRYPTION_KEY
 ```
 
----
-
-## Phase 11 — Publishers X / Meta / Instagram
+### Phase G — Publishers X / Meta / Instagram
 
 Statut :
 
@@ -995,9 +1273,7 @@ Ordre recommandé :
 5. Mastodon / WordPress
 ```
 
----
-
-## Phase 12 — Production durcie
+### Phase H — Production durcie
 
 Statut :
 
@@ -1022,14 +1298,28 @@ Statut :
 
 ---
 
-## 17. Commandes d’exploitation utiles
+## 18. Commandes d’exploitation utiles
 
-### Déploiement
+### Recharger le token admin
+
+À faire au début de chaque session shell :
+
+```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+```
+
+### Déploiement complet
 
 ```bash
 cd /opt/relaypress
 git pull
 docker compose up -d --build
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
 ```
 
 ### État services
@@ -1042,6 +1332,8 @@ docker compose ps
 ### Logs
 
 ```bash
+cd /opt/relaypress
+
 docker compose logs --tail=120 api
 docker compose logs --tail=120 worker
 docker compose logs --tail=120 caddy
@@ -1057,17 +1349,70 @@ curl -i https://app.relaypress.copinmalin.top/health
 curl -i https://relay.relaypress.copinmalin.top
 ```
 
+### Vérifier assets admin
+
+```bash
+curl -i https://api.relaypress.copinmalin.top/assets/admin.css | head
+curl -i https://api.relaypress.copinmalin.top/assets/admin.js | head
+```
+
 ### Liste des jobs à traiter
 
 ```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+
 curl -s \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" \
   "https://api.relaypress.copinmalin.top/publication-jobs?view=todo&order=desc" | jq
 ```
 
+### Liste LinkedIn à traiter
+
+```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+
+curl -s \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  "https://api.relaypress.copinmalin.top/publication-jobs?view=todo&platform=linkedin&order=desc" \
+  | jq '.jobs[] | {id, platform, status}'
+```
+
+### Réadapter un job LinkedIn depuis sa source
+
+```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+
+JOB_ID="$(curl -s \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  "https://api.relaypress.copinmalin.top/publication-jobs?view=todo&platform=linkedin&order=desc" \
+  | jq -r '.jobs[0].id')"
+
+echo "JOB_ID=$JOB_ID"
+
+JOB_ID_ENCODED="$(python3 -c 'import urllib.parse, sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$JOB_ID")"
+
+curl -s -X POST \
+  -H "Authorization: Bearer $ADMIN_API_TOKEN" \
+  "https://api.relaypress.copinmalin.top/publication-jobs/$JOB_ID_ENCODED/readapt" | jq
+```
+
 ### Liste des archives
 
 ```bash
+cd /opt/relaypress
+
+export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
+echo "Token length: ${#ADMIN_API_TOKEN}"
+
 curl -s \
   -H "Authorization: Bearer $ADMIN_API_TOKEN" \
   "https://api.relaypress.copinmalin.top/publication-jobs?view=archived&order=desc" | jq
@@ -1076,8 +1421,10 @@ curl -s \
 ### Vérification DB jobs
 
 ```bash
+cd /opt/relaypress
+
 docker compose exec postgres psql -U relaypress -d relaypress -c \
-"select id, platform, status, external_post_id, published_at, updated_at
+"select id, platform, status, source_content, adapted_content, external_post_id, published_at, updated_at
  from publication_jobs
  order by updated_at desc
  limit 20;"
@@ -1086,6 +1433,8 @@ docker compose exec postgres psql -U relaypress -d relaypress -c \
 ### Vérification DB events Nostr
 
 ```bash
+cd /opt/relaypress
+
 docker compose exec postgres psql -U relaypress -d relaypress -c \
 "select id, kind, pubkey, created_at, indexed_at
  from nostr_events
@@ -1096,16 +1445,56 @@ docker compose exec postgres psql -U relaypress -d relaypress -c \
 ### Vérification DB runs
 
 ```bash
+cd /opt/relaypress
+
 docker compose exec postgres psql -U relaypress -d relaypress -c \
-"select id, job_id, platform, status, mode, external_post_id, started_at, finished_at
+"select id, job_id, platform, status, mode, external_post_id, error_message, started_at, finished_at
  from publication_job_runs
  order by started_at desc
  limit 20;"
 ```
 
+### Test publisher mode mock
+
+```bash
+cd /opt/relaypress
+
+docker compose logs --tail=120 worker | grep 'publisherMode'
+```
+
+Attendu :
+
+```txt
+publisherMode":"mock"
+```
+
+### Test garde-fou LinkedIn réel non prêt
+
+À utiliser seulement comme test ponctuel :
+
+```bash
+cd /opt/relaypress
+
+cp .env .env.backup-phase-d
+sed -i 's/^PUBLISHER_MODE=.*/PUBLISHER_MODE=linkedin_real/' .env
+
+docker compose up -d --build worker
+docker compose logs --tail=80 worker
+
+mv .env.backup-phase-d .env
+docker compose up -d --build worker
+```
+
+Attendu pendant le test :
+
+```txt
+status":"skipped"
+reason":"LINKEDIN_ACCESS_TOKEN is missing"
+```
+
 ---
 
-## 18. Journal de suivi synthétique
+## 19. Journal de suivi synthétique
 
 ### Bootstrap projet
 
@@ -1149,6 +1538,8 @@ docker compose exec postgres psql -U relaypress -d relaypress -c \
 - correction clé publique autorisée
 - événements stockés dans nostr_events
 - création publication_jobs
+- ajout source_content
+- ajout publication_job_runs
 ```
 
 ### Pipeline éditorial
@@ -1158,11 +1549,35 @@ docker compose exec postgres psql -U relaypress -d relaypress -c \
 - création jobs depuis Nostr
 - création brouillons manuels
 - édition avant approbation
+- source/adapted comparison
+- readapt depuis source
 - approbation/rejet
+- retry/reset review
 - publication mock
-- publication_job_runs
 - archivage individuel
 - archivage groupé
+```
+
+### Interface admin
+
+```txt
+- première interface HTML embarquée
+- régression UI après grossissement du fichier
+- création admin v2 compacte
+- extraction CSS/JS vers assets
+- routes /assets/admin.css et /assets/admin.js enregistrées
+- filtres restaurés
+```
+
+### Publisher
+
+```txt
+- mock publisher initial
+- séparation via PublicationPublisher
+- mock converti en publisher isolé
+- ajout orchestrateur publisher
+- ajout stub LinkedIn réel
+- garde-fou isReady avant claim
 ```
 
 ### Sécurité
@@ -1171,130 +1586,142 @@ docker compose exec postgres psql -U relaypress -d relaypress -c \
 - endpoints jobs protégés par ADMIN_API_TOKEN
 - lecture sans token refusée
 - admin lit les données avec Authorization Bearer
+- jobs publiés protégés contre republication accidentelle
+- mode LinkedIn réel non prêt ne claim pas les jobs
 ```
 
 ---
 
-## 19. Risques connus
+## 20. Risques connus
 
-### 19.1 Interface admin encore rudimentaire
+### 20.1 Interface admin encore utilitaire
 
-Elle est fonctionnelle, mais reste un HTML embarqué dans l’API. C’est acceptable pour MVP, pas pour produit final.
+Elle est fonctionnelle et stabilisée via assets séparés, mais elle reste une interface technique. Pour un usage produit, il faudra une vraie application frontend.
 
-### 19.2 Token admin dans localStorage
+### 20.2 Token admin dans localStorage
 
 Acceptable en staging solo, insuffisant pour production.
 
-### 19.3 Pas encore d’anti-doublon fort
-
-Un job published doit être davantage protégé avant publisher réel.
-
-### 19.4 Pas encore de retry propre
-
-Les échecs peuvent être édités et remis en `pending_review`, mais il n’existe pas encore d’action métier `retry`.
-
-### 19.5 Pas de sauvegardes automatisées
+### 20.3 Pas encore de sauvegardes automatisées
 
 Point à traiter avant toute utilisation sérieuse prolongée.
 
-### 19.6 Pas de publisher réel
+### 20.4 Pas encore de publisher réel
 
-C’est volontaire. Le mock publisher reste la bonne étape actuelle.
+C’est volontaire. Le mock publisher reste le bon mode par défaut.
+
+### 20.5 OAuth LinkedIn non traité
+
+La publication réelle LinkedIn ne doit pas être implémentée sans décision claire sur : membre vs page, scopes, author URN, stockage et rotation des tokens.
+
+### 20.6 Chiffrement des tokens non encore implémenté
+
+`TOKEN_ENCRYPTION_KEY` existe, mais le modèle `publisher_accounts` n’est pas encore en place.
 
 ---
 
-## 20. Prochaine roadmap recommandée
+## 21. Prochaine roadmap recommandée
 
-### Étape A — Prévisualisation éditoriale par plateforme
+### Étape E — Publisher réel LinkedIn contrôlé
 
-Priorité : haute.
+Priorité : haute, prochaine phase logique.
 
-À ajouter dans l’admin :
-
-```txt
-- compteur caractères
-- warning contenu vide
-- warning X trop long
-- preview LinkedIn
-- preview X
-- indication “prêt à publier”
-```
-
-### Étape B — Anti-doublon / retry / reset
-
-Priorité : haute avant publisher réel.
+À faire :
 
 ```txt
-- empêcher double publication
-- retry uniquement sur failed
-- reset to pending_review
-- verrouiller les transitions invalides
+1. Clarifier cible de publication : profil personnel ou page LinkedIn
+2. Finaliser vérification app LinkedIn Developer si nécessaire
+3. Déterminer scopes exacts
+4. Obtenir author URN
+5. Implémenter appel API LinkedIn minimal dans linkedin-publisher.ts
+6. Journaliser réponse brute dans publication_job_runs.raw_response
+7. Gérer erreurs API : 401, 403, 429, 5xx, validation content
+8. Tester uniquement avec PUBLISHER_MODE=linkedin_real sur staging
+9. Revenir à PUBLISHER_MODE=mock par défaut après test
 ```
 
-### Étape C — Adaptateur LinkedIn propre
+### Étape F — Comptes publishers et chiffrement
 
-Priorité : moyenne-haute.
-
-```txt
-- paragraphes
-- liens
-- hashtags
-- ton professionnel
-- règles B-Conseil / AlpineChain / B-Only plus tard
-```
-
-### Étape D — OAuth LinkedIn
-
-Priorité : après A/B/C.
+Priorité : haute avant production.
 
 ```txt
 - table publisher_accounts
-- chiffrement token
-- connexion LinkedIn
-- test publication staging
+- chiffrement tokens
+- gestion expiration
+- éventuel refresh token
+- association plateforme / compte / page
 ```
 
-### Étape E — Sauvegardes staging
+### Étape G — Sauvegardes staging
 
-Priorité : moyenne, mais à faire avant usage régulier.
+Priorité : moyenne-haute.
 
 ```txt
 - dump PostgreSQL
 - backup volume strfry
 - procédure restauration
+- test restauration
+```
+
+### Étape H — Qualité admin
+
+Priorité : moyenne.
+
+```txt
+- meilleure UX d’erreur
+- confirmation plus claire avant approve/publish
+- statut “prêt” calculé côté API
+- historique visuel plus lisible
+- future extraction vers frontend dédié
+```
+
+### Étape I — Adaptateur IA contrôlé
+
+Priorité : plus tard.
+
+```txt
+- jamais avant publisher réel stable
+- prompt versionné
+- règles strictes par plateforme
+- validation humaine obligatoire
+- conservation source/adapted/diff
 ```
 
 ---
 
-## 21. Définition actuelle de “done” MVP
+## 22. Définition actuelle de “done” MVP
 
-Le MVP technique éditorial est considéré comme validé si :
+Le MVP technique éditorial est validé si :
 
 ```txt
 ✅ un event Nostr autorisé peut créer des jobs
 ✅ un brouillon manuel peut créer des jobs
 ✅ les jobs sont visibles uniquement avec token
-✅ un contenu peut être édité avant validation
-✅ un job peut être approuvé
+✅ sourceContent est conservé
+✅ adaptedContent peut être édité ou réadapté
+✅ un contenu peut être approuvé
 ✅ le worker publie en mock
 ✅ un run est créé
 ✅ le job passe en published
+✅ un job failed peut être retried
+✅ un job rejected/failed peut revenir en review
 ✅ les jobs terminés peuvent être archivés
 ✅ les archives restent consultables
+✅ le worker passe par une couche publisher abstraite
 ```
 
 À la date du 2026-05-05, cette définition est atteinte.
 
 ---
 
-## 22. Décision de suite
+## 23. Décision de suite
 
-Ne pas brancher encore LinkedIn réel.
+Ne pas brancher brutalement LinkedIn réel.
 
 Prochaine brique recommandée :
 
 ```txt
-Prévisualisation + validation éditoriale par plateforme
+Phase E — implémenter LinkedInPublisher réel de façon contrôlée
 ```
 
-Justification : publier réellement sans preview, compteur, anti-doublon et transitions verrouillées serait prématuré.
+Justification : la couche éditoriale, l’admin, l’audit, l’anti-doublon et l’abstraction publisher sont maintenant suffisamment propres pour préparer un premier test LinkedIn réel. Le mode `mock` doit rester le défaut tant que l’OAuth, les author URN et les erreurs API ne sont pas complètement maîtrisés.
