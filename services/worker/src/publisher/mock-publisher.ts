@@ -5,7 +5,7 @@ export function createMockPublisher(): PublicationPublisher {
     mode: "mock",
     component: "mock-publisher",
     supportedPlatforms: ["x", "linkedin", "facebook", "instagram"],
-    isReady: () => ({ ready: true }),
+    isReady: async () => ({ ready: true }),
     publish: async (job) => {
       const externalPostId = `mock:${job.platform}:${job.id}`;
 
