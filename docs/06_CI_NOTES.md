@@ -1,22 +1,56 @@
-# CI bootstrap notes
+# CI notes
 
-The repository currently does not commit a `pnpm-lock.yaml` file.
+La CI du dépôt est stabilisée autour de Node 24, pnpm et Docker Compose.
 
-During the bootstrap phase, CI intentionally runs:
+## État actuel
+
+Le lockfile `pnpm-lock.yaml` est obligatoire et doit rester versionné.
+
+La CI exécute :
 
 ```bash
-pnpm install --frozen-lockfile=false
+pnpm install --frozen-lockfile
+pnpm typecheck
+pnpm build
+cp .env.example .env
+docker compose config
+docker compose build api worker
 ```
 
-Do not enable `cache: pnpm` in `actions/setup-node` until a lockfile is committed, because GitHub Actions requires `pnpm-lock.yaml` for that cache mode.
+## Règles de maintenance
 
-Once the dependency tree is stabilized, generate and commit the lockfile locally:
+- Ne pas supprimer `pnpm-lock.yaml`.
+- Toute modification de dépendance doit mettre à jour le lockfile.
+- La version pnpm cible est `9.15.0`.
+- La version Node cible est `24`.
+- Les workflows GitHub Actions forcent l’usage Node 24 pour les actions JavaScript.
+- `.env.example` doit rester suffisant pour valider `docker compose config`.
+
+## Workflow lockfile
+
+Si les dépendances changent :
 
 ```bash
 pnpm install
-pnpm build
-git add pnpm-lock.yaml
-git commit -m "Add pnpm lockfile"
+pnpm check
+git add package.json pnpm-lock.yaml
+git commit -m "chore: update dependencies"
 ```
 
-After that, pnpm cache can be re-enabled safely in the workflow.
+Si le lockfile doit être régénéré sans installation complète :
+
+```bash
+pnpm install --lockfile-only
+```
+
+Le workflow `generate-lockfile.yml` peut aussi servir de filet de sécurité, mais la voie normale reste une mise à jour locale puis un commit explicite.
+
+## Point de vigilance
+
+La CI vérifie désormais la cohérence dépôt + Docker. Un changement dans les variables d’environnement, Dockerfiles, services API/worker ou dépendances doit donc garder ces trois niveaux alignés :
+
+```txt
+package.json / pnpm-lock.yaml
+.env.example
+docker-compose.yml
+```
