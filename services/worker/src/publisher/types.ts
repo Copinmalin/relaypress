@@ -36,6 +36,6 @@ export type PublicationPublisher = {
   mode: string;
   component: string;
   supportedPlatforms: string[];
-  isReady: () => PublisherReadiness;
+  isReady: () => Promise<PublisherReadiness>;
   publish: (job: ClaimedPublicationJob) => Promise<PublicationPublishResult>;
 };
