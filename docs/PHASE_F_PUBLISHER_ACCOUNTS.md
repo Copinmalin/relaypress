@@ -81,11 +81,15 @@ has_refresh_token: false
 token_expires_at: 2026-07-04 21:50:33 UTC
 ```
 
+## Contrôle CI
+
+Les runs échoués du 2026-05-05 portaient sur des commits intermédiaires de la migration `isReady()` asynchrone. Le contrôle utile doit être effectué sur `main` après les commits worker `dda7a4e` et documentation `d70b57e`.
+
 ## Prochaine étape
 
 ```txt
 1. Redéployer api + worker.
-2. Vérifier que la CI passe.
+2. Vérifier que la CI passe sur la tête actuelle de main.
 3. Lancer un test LinkedIn réel sans LINKEDIN_ACCESS_TOKEN dans l’override local.
 4. Vérifier que publication_job_runs.raw_response indique credentialSource=publisher_accounts.
 5. Si validé, supprimer progressivement la dépendance opérationnelle à .env.linkedin-real.
