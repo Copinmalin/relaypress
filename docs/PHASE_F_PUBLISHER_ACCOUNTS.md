@@ -37,7 +37,7 @@ Statut : ✅ réalisé côté code, ✅ validé en staging
 
 ## Incrément 3 — Admin publishers
 
-Statut : ✅ réalisé côté code, à valider en staging
+Statut : ✅ réalisé côté code, ✅ validé côté API, à valider visuellement après dernier déploiement
 
 ```txt
 - page /admin/publishers
@@ -47,6 +47,32 @@ Statut : ✅ réalisé côté code, à valider en staging
 - action serveur check-connection
 - bouton Tester la connexion dans /admin/publishers
 ```
+
+## Incrément 4 — OAuth LinkedIn depuis admin
+
+Statut : ✅ réalisé côté code, à valider en staging
+
+```txt
+- bouton Connecter / renouveler LinkedIn dans /admin/publishers
+- route admin POST /publisher-accounts/linkedin/oauth/start
+- callback GET /publisher-accounts/linkedin/oauth/callback
+- state OAuth signé et expirant
+- échange serveur-à-serveur du code OAuth
+- lecture userinfo côté serveur
+- upsert chiffré dans publisher_accounts
+- retour vers /admin/publishers avec statut success/error
+```
+
+## Variables OAuth LinkedIn
+
+```txt
+LINKEDIN_CLIENT_ID
+LINKEDIN_CLIENT_SECRET
+LINKEDIN_OAUTH_REDIRECT_URI=https://api.relaypress.copinmalin.top/publisher-accounts/linkedin/oauth/callback
+LINKEDIN_OAUTH_SCOPES=openid profile email w_member_social
+```
+
+La même URL de callback doit être ajoutée dans LinkedIn Developer comme Authorized redirect URL.
 
 ## Modèle publisher_accounts
 
@@ -81,6 +107,7 @@ Le mode permanent staging reste `PUBLISHER_MODE=mock`. Les tests réels LinkedIn
 - les logs ne doivent pas contenir les valeurs sensibles
 - refresh_token_expires_at reste null si aucun refresh token n’est stocké
 - le test de connexion est exécuté côté serveur et ne renvoie qu’un diagnostic filtré
+- le callback OAuth est public mais protégé par un state signé et expirant
 ```
 
 ## État staging observé
@@ -105,8 +132,9 @@ Les runs échoués du 2026-05-05 portaient sur des commits intermédiaires de la
 ```txt
 1. Redéployer api.
 2. Vérifier que la CI passe sur la tête actuelle de main.
-3. Ouvrir /admin/publishers.
-4. Tester la connexion LinkedIn depuis l’interface.
-5. Vérifier que le statut reste connected et que last_validated_at est mis à jour.
-6. Préparer ensuite le flux OAuth complet côté admin.
+3. Ajouter la callback OAuth RelayPress dans LinkedIn Developer.
+4. Ouvrir /admin/publishers.
+5. Cliquer Connecter / renouveler LinkedIn.
+6. Vérifier retour success et compte LinkedIn mis à jour.
+7. Vérifier Tester la connexion.
 ```
