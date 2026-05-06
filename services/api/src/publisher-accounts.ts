@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
 import { encryptSecret } from "./crypto.js";
 import { pool } from "./db.js";
+import { checkPublisherConnection } from "./publisher-connection-check.js";
 
 type PublisherAccountsQuery = {
   provider?: string;
@@ -244,6 +245,25 @@ export async function registerPublisherAccountRoutes(app: FastifyInstance): Prom
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return reply.code(400).send({ error: "publisher_account_not_saved", message });
+      }
+    },
+  );
+
+  app.post<{ Params: PublisherAccountParams }>(
+    "/publisher-accounts/:id/check-connection",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      try {
+        const result = await checkPublisherConnection(request.params.id);
+
+        if (!result) {
+          return reply.code(404).send({ error: "not_found", message: "Publisher account not found" });
+        }
+
+        return { result };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return reply.code(400).send({ error: "publisher_connection_check_failed", message });
       }
     },
   );
