@@ -23,7 +23,7 @@ Statut : ✅ réalisé
 
 ## Incrément 2 — Lecture worker depuis la base
 
-Statut : ✅ réalisé côté code, à valider en staging
+Statut : ✅ réalisé côté code, ✅ validé en staging
 
 ```txt
 - readiness publisher asynchrone
@@ -32,6 +32,20 @@ Statut : ✅ réalisé côté code, à valider en staging
 - exclusion des comptes expirés
 - fallback temporaire vers .env si aucun compte actif n’est trouvé
 - raw_response enrichie avec credentialSource et accountId sans secret
+- publication LinkedIn réelle validée via publisher_accounts
+```
+
+## Incrément 3 — Admin publishers
+
+Statut : ✅ réalisé côté code, à valider en staging
+
+```txt
+- page /admin/publishers
+- lien depuis /admin
+- affichage provider, statut, URN, scopes, expiration et dernière validation
+- affichage booléen hasAccessToken / hasRefreshToken sans secret
+- action serveur check-connection
+- bouton Tester la connexion dans /admin/publishers
 ```
 
 ## Modèle publisher_accounts
@@ -66,6 +80,7 @@ Le mode permanent staging reste `PUBLISHER_MODE=mock`. Les tests réels LinkedIn
 - TOKEN_ENCRYPTION_KEY est obligatoire pour créer ou lire un compte publisher
 - les logs ne doivent pas contenir les valeurs sensibles
 - refresh_token_expires_at reste null si aucun refresh token n’est stocké
+- le test de connexion est exécuté côté serveur et ne renvoie qu’un diagnostic filtré
 ```
 
 ## État staging observé
@@ -88,10 +103,10 @@ Les runs échoués du 2026-05-05 portaient sur des commits intermédiaires de la
 ## Prochaine étape
 
 ```txt
-1. Redéployer api + worker.
+1. Redéployer api.
 2. Vérifier que la CI passe sur la tête actuelle de main.
-3. Lancer un test LinkedIn réel sans LINKEDIN_ACCESS_TOKEN dans l’override local.
-4. Vérifier que publication_job_runs.raw_response indique credentialSource=publisher_accounts.
-5. Si validé, supprimer progressivement la dépendance opérationnelle à .env.linkedin-real.
-6. Ajouter un écran admin publisher accounts.
+3. Ouvrir /admin/publishers.
+4. Tester la connexion LinkedIn depuis l’interface.
+5. Vérifier que le statut reste connected et que last_validated_at est mis à jour.
+6. Préparer ensuite le flux OAuth complet côté admin.
 ```
