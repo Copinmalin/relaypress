@@ -103,6 +103,10 @@ const publishersHtml = String.raw`<!doctype html>
         </select>
         <button class="primary" id="refresh">Rafraîchir</button>
       </div>
+      <div class="bulk">
+        <button class="primary" id="connectLinkedIn">Connecter / renouveler LinkedIn</button>
+        <span class="hint">Redirection OAuth sécurisée, stockage chiffré côté serveur.</span>
+      </div>
       <div class="status" id="statusLine">Initialisation…</div>
       <div class="hint" id="tokenHint"></div>
     </section>
@@ -113,6 +117,7 @@ const publishersHtml = String.raw`<!doctype html>
     var tokenInput = document.querySelector('#token');
     var providerInput = document.querySelector('#provider');
     var refreshButton = document.querySelector('#refresh');
+    var connectLinkedInButton = document.querySelector('#connectLinkedIn');
     var cards = document.querySelector('#cards');
     var statusLine = document.querySelector('#statusLine');
     var tokenHint = document.querySelector('#tokenHint');
@@ -123,7 +128,15 @@ const publishersHtml = String.raw`<!doctype html>
     function esc(value) { return String(value == null ? '' : value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
     function date(value) { return value ? new Date(value).toLocaleString('fr-FR') : '—'; }
     function hasToken() { return tokenInput.value.trim().length > 0; }
-    function updateTokenHint() { tokenHint.textContent = hasToken() ? 'Token admin présent.' : 'Token admin absent.'; }
+    function updateTokenHint() {
+      var params = new URLSearchParams(window.location.search);
+      var oauth = params.get('linkedin_oauth');
+      var message = params.get('message');
+      var oauthMessage = '';
+      if (oauth === 'success') oauthMessage = ' Connexion LinkedIn terminée.';
+      if (oauth === 'error') oauthMessage = ' Erreur OAuth LinkedIn: ' + (message || 'échec inconnu');
+      tokenHint.textContent = (hasToken() ? 'Token admin présent.' : 'Token admin absent.') + oauthMessage;
+    }
     function yesNo(value) { return value ? '<span class="published">oui</span>' : '<span class="pending">non</span>'; }
 
     async function api(path, options) {
@@ -137,6 +150,17 @@ const publishersHtml = String.raw`<!doctype html>
     }
 
     function row(label, value) { return '<div class="meta"><strong>' + esc(label) + ':</strong> ' + value + '</div>'; }
+
+    async function startLinkedInOAuth() {
+      statusLine.textContent = 'Préparation de la redirection LinkedIn…';
+      try {
+        var payload = await api('/publisher-accounts/linkedin/oauth/start', { method: 'POST' });
+        if (!payload.authorizationUrl) throw new Error('URL OAuth LinkedIn absente');
+        window.location.href = payload.authorizationUrl;
+      } catch (error) {
+        statusLine.textContent = 'Erreur: ' + error.message;
+      }
+    }
 
     async function checkConnection(id, output) {
       output.textContent = 'Test en cours…';
@@ -200,6 +224,7 @@ const publishersHtml = String.raw`<!doctype html>
     tokenInput.addEventListener('input', function () { localStorage.setItem('relaypress.adminToken', tokenInput.value.trim()); updateTokenHint(); });
     providerInput.addEventListener('change', loadAccounts);
     refreshButton.addEventListener('click', loadAccounts);
+    connectLinkedInButton.addEventListener('click', startLinkedInOAuth);
     updateTokenHint();
     loadAccounts();
   </script>
