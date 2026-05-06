@@ -126,10 +126,11 @@ const publishersHtml = String.raw`<!doctype html>
     function updateTokenHint() { tokenHint.textContent = hasToken() ? 'Token admin présent.' : 'Token admin absent.'; }
     function yesNo(value) { return value ? '<span class="published">oui</span>' : '<span class="pending">non</span>'; }
 
-    async function api(path) {
+    async function api(path, options) {
+      options = options || {};
       var token = tokenInput.value.trim();
       if (!token) throw new Error('ADMIN_API_TOKEN manquant');
-      var response = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
+      var response = await fetch(path, { method: options.method || 'GET', headers: { Authorization: 'Bearer ' + token } });
       var payload = await response.json().catch(function () { return {}; });
       if (!response.ok) throw new Error(payload.message || payload.error || ('HTTP ' + response.status));
       return payload;
@@ -137,8 +138,20 @@ const publishersHtml = String.raw`<!doctype html>
 
     function row(label, value) { return '<div class="meta"><strong>' + esc(label) + ':</strong> ' + value + '</div>'; }
 
+    async function checkConnection(id, output) {
+      output.textContent = 'Test en cours…';
+      try {
+        var payload = await api('/publisher-accounts/' + encodeURIComponent(id) + '/check-connection', { method: 'POST' });
+        output.textContent = JSON.stringify(payload.result, null, 2);
+        await loadAccounts(false);
+      } catch (error) {
+        output.textContent = 'Erreur: ' + error.message;
+      }
+    }
+
     function accountCard(account) {
       var scopes = Array.isArray(account.scopes) ? account.scopes : [];
+      var resultId = 'check-' + String(account.id).replace(/[^a-zA-Z0-9]/g, '-');
       var html = '';
       html += '<article class="job">';
       html += '<div class="badges"><span class="badge">' + esc(account.provider) + '</span><span class="badge ' + esc(account.status) + '">' + esc(account.status) + '</span></div>';
@@ -152,17 +165,23 @@ const publishersHtml = String.raw`<!doctype html>
       html += row('Dernière validation', esc(date(account.lastValidatedAt)));
       html += row('Mis à jour', esc(date(account.updatedAt)));
       html += row('ID interne', esc(account.id));
+      html += '<div class="actions"><button class="primary" data-action="check">Tester la connexion</button></div>';
+      html += '<details><summary>Résultat du test</summary><pre id="' + resultId + '">Aucun test lancé.</pre></details>';
       html += '</article>';
       var wrap = document.createElement('div');
       wrap.innerHTML = html;
-      return wrap.firstElementChild;
+      var card = wrap.firstElementChild;
+      var output = card.querySelector('#' + CSS.escape(resultId));
+      card.querySelector('[data-action="check"]').addEventListener('click', function () { checkConnection(account.id, output); });
+      return card;
     }
 
-    async function loadAccounts() {
+    async function loadAccounts(showLoading) {
+      if (showLoading !== false) showLoading = true;
       updateTokenHint();
       localStorage.setItem('relaypress.publisherProvider', providerInput.value);
       cards.innerHTML = '';
-      statusLine.textContent = 'Chargement…';
+      if (showLoading) statusLine.textContent = 'Chargement…';
       try {
         var params = new URLSearchParams();
         if (providerInput.value) params.set('provider', providerInput.value);
