@@ -3,6 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
 import { encryptSecret } from "./crypto.js";
 import { pool } from "./db.js";
+import { completeLinkedInOAuth, createLinkedInAuthorizationUrl } from "./linkedin-oauth.js";
 import { checkPublisherConnection } from "./publisher-connection-check.js";
 
 type PublisherAccountsQuery = {
@@ -12,6 +13,13 @@ type PublisherAccountsQuery = {
 
 type PublisherAccountParams = {
   id: string;
+};
+
+type LinkedInOAuthCallbackQuery = {
+  code?: string;
+  state?: string;
+  error?: string;
+  error_description?: string;
 };
 
 type UpsertPublisherAccountBody = {
@@ -264,6 +272,34 @@ export async function registerPublisherAccountRoutes(app: FastifyInstance): Prom
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return reply.code(400).send({ error: "publisher_connection_check_failed", message });
+      }
+    },
+  );
+
+  app.post(
+    "/publisher-accounts/linkedin/oauth/start",
+    { preHandler: requireAdminToken },
+    async () => ({ authorizationUrl: createLinkedInAuthorizationUrl() }),
+  );
+
+  app.get<{ Querystring: LinkedInOAuthCallbackQuery }>(
+    "/publisher-accounts/linkedin/oauth/callback",
+    async (request, reply) => {
+      if (request.query.error) {
+        const message = encodeURIComponent(request.query.error_description || request.query.error);
+        return reply.redirect(`/admin/publishers?linkedin_oauth=error&message=${message}`);
+      }
+
+      if (!request.query.code || !request.query.state) {
+        return reply.redirect("/admin/publishers?linkedin_oauth=error&message=missing_code_or_state");
+      }
+
+      try {
+        await completeLinkedInOAuth(request.query.code, request.query.state);
+        return reply.redirect("/admin/publishers?linkedin_oauth=success");
+      } catch (error) {
+        const message = encodeURIComponent(error instanceof Error ? error.message : String(error));
+        return reply.redirect(`/admin/publishers?linkedin_oauth=error&message=${message}`);
       }
     },
   );
