@@ -173,6 +173,17 @@ const publishersHtml = String.raw`<!doctype html>
       }
     }
 
+    async function refreshAccount(id, output) {
+      output.textContent = 'Renouvellement en cours…';
+      try {
+        var payload = await api('/publisher-accounts/' + encodeURIComponent(id) + '/refresh', { method: 'POST' });
+        output.textContent = JSON.stringify(payload.result, null, 2);
+        await loadAccounts(false);
+      } catch (error) {
+        output.textContent = 'Erreur: ' + error.message;
+      }
+    }
+
     function accountCard(account) {
       var scopes = Array.isArray(account.scopes) ? account.scopes : [];
       var resultId = 'check-' + String(account.id).replace(/[^a-zA-Z0-9]/g, '-');
@@ -189,7 +200,7 @@ const publishersHtml = String.raw`<!doctype html>
       html += row('Dernière validation', esc(date(account.lastValidatedAt)));
       html += row('Mis à jour', esc(date(account.updatedAt)));
       html += row('ID interne', esc(account.id));
-      html += '<div class="actions"><button class="primary" data-action="check">Tester la connexion</button></div>';
+      html += '<div class="actions"><button class="primary" data-action="check">Tester la connexion</button><button data-action="refresh">Renouveler maintenant</button></div>';
       html += '<details><summary>Résultat du test</summary><pre id="' + resultId + '">Aucun test lancé.</pre></details>';
       html += '</article>';
       var wrap = document.createElement('div');
@@ -197,6 +208,7 @@ const publishersHtml = String.raw`<!doctype html>
       var card = wrap.firstElementChild;
       var output = card.querySelector('#' + CSS.escape(resultId));
       card.querySelector('[data-action="check"]').addEventListener('click', function () { checkConnection(account.id, output); });
+      card.querySelector('[data-action="refresh"]').addEventListener('click', function () { refreshAccount(account.id, output); });
       return card;
     }
 
