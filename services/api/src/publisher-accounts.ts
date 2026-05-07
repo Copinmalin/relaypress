@@ -3,7 +3,7 @@ import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
 import { encryptSecret } from "./crypto.js";
 import { pool } from "./db.js";
-import { completeLinkedInOAuth, createLinkedInAuthorizationUrl } from "./linkedin-oauth.js";
+import { completeLinkedInOAuth, createLinkedInAuthorizationUrl, refreshLinkedInAccount } from "./linkedin-oauth.js";
 import { checkPublisherConnection } from "./publisher-connection-check.js";
 
 type PublisherAccountsQuery = {
@@ -272,6 +272,25 @@ export async function registerPublisherAccountRoutes(app: FastifyInstance): Prom
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         return reply.code(400).send({ error: "publisher_connection_check_failed", message });
+      }
+    },
+  );
+
+  app.post<{ Params: PublisherAccountParams }>(
+    "/publisher-accounts/:id/refresh",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      try {
+        const result = await refreshLinkedInAccount(request.params.id, { force: true });
+
+        if (!result) {
+          return reply.code(404).send({ error: "not_found", message: "Publisher account not found" });
+        }
+
+        return { result };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return reply.code(400).send({ error: "publisher_account_refresh_failed", message });
       }
     },
   );
