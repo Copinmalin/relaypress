@@ -5,7 +5,7 @@ import type { ClaimedPublicationJob, PublicationPublisher, PublicationPublishRes
 import { PublisherPublishError } from "./types.js";
 
 const LINKEDIN_UGC_POSTS_PATH = "/ugcPosts";
-const LINKEDIN_TOKEN_PATH = "/oauth/v2/accessToken";
+const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 
 type LinkedInErrorResponse = {
@@ -102,10 +102,6 @@ function extractExternalPostId(response: Response): string {
   return `linkedin:ugcPosts:${Date.now()}`;
 }
 
-function getLinkedInOAuthBaseUrl(): string {
-  return workerConfig.linkedinApiBaseUrl.replace(/\/v2\/?$/, "");
-}
-
 function getRequiredLinkedInClientEnv(name: "LINKEDIN_CLIENT_ID" | "LINKEDIN_CLIENT_SECRET"): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required for LinkedIn refresh`);
@@ -153,7 +149,7 @@ async function refreshDatabaseLinkedInAccount(account: DatabaseLinkedInAccount):
     return null;
   }
 
-  const response = await fetch(`${getLinkedInOAuthBaseUrl()}${LINKEDIN_TOKEN_PATH}`, {
+  const response = await fetch(LINKEDIN_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
