@@ -1,5 +1,5 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
-import { encryptSecret } from "./crypto.js";
+import { decryptSecret, encryptSecret } from "./crypto.js";
 import { pool } from "./db.js";
 
 const LINKEDIN_AUTHORIZATION_URL = "https://www.linkedin.com/oauth/v2/authorization";
@@ -7,6 +7,7 @@ const LINKEDIN_EXCHANGE_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo";
 const DEFAULT_SCOPES = ["openid", "profile", "email", "w_member_social"];
 const STATE_TTL_SECONDS = 15 * 60;
+const REFRESH_WINDOW_SECONDS = 7 * 24 * 60 * 60;
 
 type LinkedInExchangeResponse = {
   access_token?: unknown;
@@ -26,6 +27,16 @@ type LinkedInUserInfo = {
 type OAuthState = {
   nonce: string;
   createdAt: number;
+};
+
+type RefreshableLinkedInAccount = {
+  id: string;
+  provider: string;
+  account_urn: string;
+  scopes: string[];
+  token_expires_at: Date | null;
+  refresh_token_expires_at: Date | null;
+  encrypted_refresh_token: string | null;
 };
 
 function base64UrlEncode(value: string): string {
@@ -107,6 +118,16 @@ function parseScopes(value: unknown): string[] {
   return [...new Set(value.split(/[ ,]+/).map((scope) => scope.trim()).filter(Boolean))].sort();
 }
 
+function secondsUntil(date: Date | null): number | null {
+  if (!date) return null;
+  return Math.floor((date.getTime() - Date.now()) / 1000);
+}
+
+function shouldRefreshAccount(account: RefreshableLinkedInAccount): boolean {
+  const seconds = secondsUntil(account.token_expires_at);
+  return seconds !== null && seconds <= REFRESH_WINDOW_SECONDS;
+}
+
 async function exchangeCodeForCredential(code: string): Promise<LinkedInExchangeResponse> {
   const response = await fetch(LINKEDIN_EXCHANGE_URL, {
     method: "POST",
@@ -127,6 +148,30 @@ async function exchangeCodeForCredential(code: string): Promise<LinkedInExchange
   if (!response.ok) {
     const message = typeof payload?.message === "string" ? payload.message : response.statusText;
     throw new Error(`LinkedIn OAuth exchange failed: ${message}`);
+  }
+
+  return payload as LinkedInExchangeResponse;
+}
+
+async function exchangeRefreshCredential(refreshCredential: string): Promise<LinkedInExchangeResponse> {
+  const response = await fetch(LINKEDIN_EXCHANGE_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshCredential,
+      client_id: getRequiredEnv("LINKEDIN_CLIENT_ID"),
+      client_secret: getRequiredEnv("LINKEDIN_CLIENT_SECRET"),
+    }),
+  });
+
+  const payload = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    const message = typeof payload?.message === "string" ? payload.message : response.statusText;
+    throw new Error(`LinkedIn refresh failed: ${message}`);
   }
 
   return payload as LinkedInExchangeResponse;
@@ -221,6 +266,79 @@ async function upsertLinkedInAccountFromOAuth(exchange: LinkedInExchangeResponse
   };
 }
 
+async function findRefreshableLinkedInAccount(id: string): Promise<RefreshableLinkedInAccount | null> {
+  const result = await pool.query<RefreshableLinkedInAccount>(
+    `
+      select
+        id,
+        provider,
+        account_urn,
+        scopes,
+        token_expires_at,
+        refresh_token_expires_at,
+        encrypted_refresh_token
+      from publisher_accounts
+      where id = $1
+        and provider = 'linkedin'
+      limit 1
+    `,
+    [id],
+  );
+
+  return result.rows[0] ?? null;
+}
+
+async function updateLinkedInAccountAfterRefresh(account: RefreshableLinkedInAccount, exchange: LinkedInExchangeResponse) {
+  const credential = typeof exchange.access_token === "string" ? exchange.access_token : null;
+  const renewalCredential = typeof exchange.refresh_token === "string" ? exchange.refresh_token : null;
+  const expiresIn = typeof exchange.expires_in === "number" ? exchange.expires_in : null;
+  const renewalExpiresIn = typeof exchange.refresh_token_expires_in === "number" ? exchange.refresh_token_expires_in : null;
+
+  if (!credential) {
+    throw new Error("LinkedIn refresh response did not include a publish credential");
+  }
+
+  const tokenExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000) : account.token_expires_at;
+  const refreshTokenExpiresAt = renewalCredential && renewalExpiresIn
+    ? new Date(Date.now() + renewalExpiresIn * 1000)
+    : account.refresh_token_expires_at;
+  const scopes = parseScopes(exchange.scope).length > 0 ? parseScopes(exchange.scope) : account.scopes;
+
+  await pool.query(
+    `
+      update publisher_accounts
+      set
+        status = 'connected',
+        scopes = $2::jsonb,
+        encrypted_access_token = $3,
+        encrypted_refresh_token = coalesce($4, encrypted_refresh_token),
+        token_expires_at = $5,
+        refresh_token_expires_at = $6,
+        last_validated_at = now(),
+        updated_at = now()
+      where id = $1
+    `,
+    [
+      account.id,
+      JSON.stringify(scopes),
+      encryptSecret(credential),
+      renewalCredential ? encryptSecret(renewalCredential) : null,
+      tokenExpiresAt,
+      refreshTokenExpiresAt,
+    ],
+  );
+
+  return {
+    id: account.id,
+    provider: "linkedin",
+    accountUrn: account.account_urn,
+    scopes,
+    tokenExpiresAt,
+    refreshTokenExpiresAt,
+    refreshed: true,
+  };
+}
+
 export function createLinkedInAuthorizationUrl(): string {
   const params = new URLSearchParams({
     response_type: "code",
@@ -239,6 +357,52 @@ export async function completeLinkedInOAuth(code: string, state: string) {
   const credential = typeof exchange.access_token === "string" ? exchange.access_token : "";
   const userInfo = await readLinkedInUserInfo(credential);
   return upsertLinkedInAccountFromOAuth(exchange, userInfo);
+}
+
+export async function refreshLinkedInAccount(id: string, options: { force?: boolean } = {}) {
+  const account = await findRefreshableLinkedInAccount(id);
+
+  if (!account) {
+    return null;
+  }
+
+  if (!account.encrypted_refresh_token) {
+    return {
+      id: account.id,
+      provider: "linkedin",
+      accountUrn: account.account_urn,
+      refreshed: false,
+      reason: "missing_refresh_credential",
+    };
+  }
+
+  if (account.refresh_token_expires_at && account.refresh_token_expires_at.getTime() <= Date.now()) {
+    await pool.query("update publisher_accounts set status = 'expired', updated_at = now() where id = $1", [account.id]);
+
+    return {
+      id: account.id,
+      provider: "linkedin",
+      accountUrn: account.account_urn,
+      refreshed: false,
+      reason: "refresh_credential_expired",
+    };
+  }
+
+  if (!options.force && !shouldRefreshAccount(account)) {
+    return {
+      id: account.id,
+      provider: "linkedin",
+      accountUrn: account.account_urn,
+      refreshed: false,
+      reason: "not_needed",
+      tokenExpiresAt: account.token_expires_at,
+      refreshTokenExpiresAt: account.refresh_token_expires_at,
+    };
+  }
+
+  const renewalCredential = decryptSecret(account.encrypted_refresh_token);
+  const exchange = await exchangeRefreshCredential(renewalCredential);
+  return updateLinkedInAccountAfterRefresh(account, exchange);
 }
 
 export function getLinkedInOAuthCallbackPath(): string {
