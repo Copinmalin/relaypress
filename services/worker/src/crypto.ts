@@ -1,7 +1,8 @@
-import { createDecipheriv, createHash } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 
 const ENCRYPTION_VERSION = "v1";
 const ALGORITHM = "aes-256-gcm";
+const IV_LENGTH = 12;
 const AUTH_TAG_LENGTH = 16;
 
 function deriveKey(secret: string): Buffer {
@@ -16,6 +17,27 @@ function getEncryptionKey(): Buffer {
   }
 
   return deriveKey(secret);
+}
+
+export function encryptSecret(value: string): string {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    throw new Error("Cannot encrypt an empty secret");
+  }
+
+  const key = getEncryptionKey();
+  const iv = randomBytes(IV_LENGTH);
+  const cipher = createCipheriv(ALGORITHM, key, iv, { authTagLength: AUTH_TAG_LENGTH });
+  const encrypted = Buffer.concat([cipher.update(trimmed, "utf8"), cipher.final()]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    ENCRYPTION_VERSION,
+    iv.toString("base64url"),
+    authTag.toString("base64url"),
+    encrypted.toString("base64url"),
+  ].join(":");
 }
 
 export function decryptSecret(payload: string): string {
