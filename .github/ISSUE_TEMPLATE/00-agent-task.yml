@@ -1,0 +1,156 @@
+name: Tâche agent IA
+description: Créer une issue exploitable par Codex, GitHub Copilot ou un agent IA
+title: "[Agent IA] "
+labels: ["agent-ia", "a-trier"]
+assignees: []
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Utilise ce formulaire pour créer une tâche claire, limitée et vérifiable pour un agent IA.
+
+        Règle : une issue = une tâche = une PR possible.
+
+  - type: input
+    id: project
+    attributes:
+      label: Projet concerné
+      description: Nom du projet, dépôt ou périmètre concerné.
+      placeholder: "RelayPress"
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Contexte
+      description: Décrire uniquement les faits utiles. Référencer docs/MASTER_PROJECT_TRACKING.md si pertinent.
+      placeholder: |
+        Situation actuelle :
+        Source de vérité : docs/MASTER_PROJECT_TRACKING.md
+        Décisions déjà prises :
+    validations:
+      required: true
+
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objectif
+      description: Formuler une tâche précise, vérifiable et limitée.
+      placeholder: "Créer / corriger / documenter / vérifier..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Fichiers probablement concernés
+      description: Lister les fichiers ou dossiers à consulter ou modifier.
+      placeholder: |
+        - services/api/...
+        - services/worker/...
+        - packages/shared/...
+        - docs/MASTER_PROJECT_TRACKING.md
+    validations:
+      required: false
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Contraintes
+      description: Indiquer les règles à respecter impérativement.
+      value: |
+        - Respecter AGENTS.md.
+        - Respecter docs/MASTER_PROJECT_TRACKING.md comme source de vérité.
+        - Ne jamais ajouter d’information sensible au dépôt.
+        - Garder le mode de publication simulée comme défaut sûr.
+        - Ne pas activer de publication réelle sans validation explicite.
+        - Ne pas modifier l’architecture sans justification documentée.
+        - Ne pas introduire de dépendance sans validation.
+        - Signaler toute ambiguïté bloquante avant modification.
+    validations:
+      required: true
+
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: Hors périmètre
+      description: Indiquer clairement ce que l’agent ne doit pas traiter.
+      placeholder: |
+        - Élément hors périmètre 1
+        - Élément hors périmètre 2
+    validations:
+      required: false
+
+  - type: textarea
+    id: definition_of_done
+    attributes:
+      label: Definition of Done
+      description: Définir les critères objectifs de réussite.
+      value: |
+        - L’objectif est rempli.
+        - Les changements sont limités au scope.
+        - Les tests ou vérifications nécessaires sont indiqués.
+        - La documentation est mise à jour si nécessaire.
+        - Aucune information sensible n’est ajoutée.
+        - Les limites restantes sont signalées.
+        - La prochaine action est claire.
+    validations:
+      required: true
+
+  - type: textarea
+    id: tests
+    attributes:
+      label: Tests ou vérifications attendus
+      description: Indiquer les commandes, vérifications ou relectures attendues.
+      placeholder: |
+        - pnpm lint
+        - pnpm typecheck
+        - pnpm build
+        - pnpm check
+        - docker compose config
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: risks
+    attributes:
+      label: Risques à contrôler
+      description: Cocher les risques pertinents.
+      options:
+        - label: Risque de hors-scope
+        - label: Risque de régression
+        - label: Risque de contradiction avec docs/MASTER_PROJECT_TRACKING.md
+        - label: Risque d’information sensible ajoutée
+        - label: Risque de publication réelle non souhaitée
+        - label: Risque de dépendance inutile
+
+  - type: textarea
+    id: agent_notes
+    attributes:
+      label: Notes pour agent IA
+      description: Instructions spécifiques pour Codex, Copilot ou un autre agent IA.
+      value: |
+        Avant de modifier les fichiers :
+        1. Relire AGENTS.md.
+        2. Relire docs/MASTER_PROJECT_TRACKING.md.
+        3. Relire les fichiers concernés.
+        4. Résumer le plan d’exécution.
+        5. Modifier uniquement ce qui est nécessaire.
+        6. Résumer les fichiers modifiés, les vérifications effectuées et les limites restantes.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_result
+    attributes:
+      label: Résultat attendu de l’agent
+      description: Décrire ce que l’agent doit produire à la fin.
+      value: |
+        - résumé du changement ;
+        - fichiers modifiés ;
+        - vérifications effectuées ;
+        - limites restantes ;
+        - prochaine action recommandée.
+    validations:
+      required: true
