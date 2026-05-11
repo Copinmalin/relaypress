@@ -23,10 +23,15 @@ Il doit être reflété dans `docs/MASTER_PROJECT_TRACKING.md`, car ce document 
 
 ## Section recommandée à intégrer dans MASTER_PROJECT_TRACKING
 
-Proposition d’insertion dans la section `3. État actuel du dépôt`, après le bloc `Socle validé` ou dans la structure projet :
+Proposition d’insertion dans la section `3. État actuel du dépôt`, après le bloc `Socle validé` ou dans la structure projet.
 
-```markdown
+### Titre recommandé
+
+```text
 ### Workflow agent IA validé
+```
+
+### Texte recommandé
 
 RelayPress dispose désormais d’un workflow agent IA minimal pour cadrer les tâches traitables par Codex, GitHub Copilot ou un autre agent IA.
 
@@ -53,7 +58,6 @@ Ce workflow impose :
 - Definition of Done ;
 - PR dédiée ;
 - revue humaine avant merge.
-```
 
 ## Limite de cette PR
 
