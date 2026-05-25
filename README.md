@@ -1,142 +1,119 @@
 # RelayPress
 
-**RelayPress** est un système d’orchestration éditoriale souverain piloté par Nostr.
+**RelayPress** est une application d’orchestration éditoriale souveraine.
 
-L’objectif n’est pas de faire un simple crossposter. RelayPress sépare l’intention éditoriale signée, l’état métier opérationnel, l’adaptation par plateforme, la validation humaine, la publication et l’audit d’exécution.
+Son objectif est de transformer des sources d’information sélectionnées en contenus prêts à publier sur plusieurs canaux, avec génération assistée par IA, validation humaine, publication contrôlée et audit.
+
+RelayPress n’est pas un simple crossposter. Le projet vise une chaîne éditoriale complète :
+
+```txt
+source éditoriale
+→ sélection humaine
+→ génération ou adaptation par canal
+→ validation
+→ publication contrôlée
+→ audit
+```
+
+## Objectif global
+
+RelayPress doit permettre de piloter une diffusion éditoriale multi-canal sans perdre le contrôle humain ni la souveraineté du processus.
+
+Les premiers canaux cibles sont :
+
+- **Blog** : format long, structuré, sourcé et analytique ;
+- **Nostr** : diffusion souveraine et journal éditorial ;
+- **LinkedIn** : communication professionnelle ;
+- **X** : posts courts et engagement rapide ;
+- **Facebook** : vulgarisation grand public ;
+- **Instagram** : publication visuelle et commentaire d’accompagnement.
+
+La première source automatisée visée est **BTC Breakdown**, avec une architecture prévue pour accueillir d’autres sources plus tard.
+
+## Positionnement
+
+RelayPress repose sur quelques choix structurants :
+
+- Nostr reste une racine souveraine pour les intentions éditoriales et le journal de publication ;
+- PostgreSQL porte l’état métier opérationnel ;
+- l’IA génère des propositions, mais ne publie pas seule ;
+- la validation humaine reste obligatoire avant publication réelle ;
+- les publishers réels doivent passer par les API officielles ;
+- le mode `mock` reste le défaut sûr tant que les sorties réelles ne sont pas validées.
+
+## Workflow cible
+
+```txt
+BTC Breakdown ou autre source
+→ récupération automatique
+→ affichage dans l’admin
+→ sélection d’un sujet
+→ création d’une campagne éditoriale
+→ sélection des plateformes
+→ génération IA des formats
+→ relecture et édition humaine
+→ validation
+→ publication API ou mock
+→ audit des runs
+```
 
 ## État actuel
 
-Le dépôt contient aujourd’hui un MVP éditorial fonctionnel en staging :
+Le dépôt contient déjà un MVP éditorial fonctionnel en staging :
 
-- monorepo pnpm avec Node 24 et TypeScript NodeNext ;
-- CI GitHub Actions avec `pnpm-lock.yaml` obligatoire ;
-- stack Docker Compose : Caddy, PostgreSQL, Redis, strfry, API et worker ;
-- relay Nostr privé via strfry ;
-- indexation Nostr filtrée par pubkey autorisée ;
 - création de jobs éditoriaux depuis Nostr ou depuis l’interface admin ;
-- conservation séparée de `sourceContent` et `adaptedContent` ;
-- adaptation déterministe par plateforme, dont LinkedIn sans IA ;
-- interface admin pour créer, lire, éditer, réadapter, valider, rejeter, relancer et archiver ;
-- publisher mock isolé derrière une interface commune ;
-- historique d’exécution dans `publication_job_runs` ;
-- stub LinkedIn réel préparé, non activé par défaut.
+- conservation de la source et du contenu adapté ;
+- interface admin de validation et d’édition ;
+- publisher mock ;
+- historique d’exécution ;
+- première préparation du publisher LinkedIn réel.
 
-Le mode de publication réel reste volontairement désactivé. `PUBLISHER_MODE=mock` est la configuration sûre par défaut.
-
-## Vision
+La trajectoire actuelle est de passer d’un MVP de jobs éditoriaux à une application produit centrée sur :
 
 ```txt
-Nostr = intention signée + journal souverain + plan de contrôle
-Relay privé = registre canonique des événements éditoriaux
-PostgreSQL = état métier opérationnel
-Worker = moteur d’indexation, de transformation et de publication
-API admin = pilotage éditorial humain
-Publishers = sorties vers plateformes externes
-IA = adaptation sous contraintes, plus tard
+sources → campagnes → IA → validation → publication multi-canal
 ```
-
-## Workflow MVP
-
-```txt
-Nostr event ou brouillon manuel
-→ création de jobs éditoriaux
-→ adaptation minimale / déterministe selon plateforme
-→ comparaison source originale / version adaptée
-→ édition humaine
-→ validation
-→ publication mock
-→ audit des exécutions
-→ archivage non destructif
-```
-
-## Principes non négociables
-
-- Nostr reste la racine souveraine des intentions éditoriales.
-- PostgreSQL porte l’état métier opérationnel.
-- Aucun `nsec` ne doit être stocké en clair.
-- Les tokens OAuth devront être chiffrés avant tout branchement réel.
-- Pas de scraping de réseaux sociaux.
-- Publication externe uniquement via API officielles.
-- Les contenus sensibles doivent rester soumis à validation humaine.
-- Les actions importantes doivent être auditables.
-- Le mode `mock` reste le mode par défaut tant que LinkedIn réel n’est pas durci.
 
 ## Structure du dépôt
 
 ```txt
 .
-├── .github/
-│   ├── ISSUE_TEMPLATE/
-│   │   └── 00-agent-task.yml
-│   ├── workflows/
-│   │   ├── ci.yml
-│   │   └── generate-lockfile.yml
-│   └── pull_request_template.md
-├── AGENTS.md                # Instructions pour agents IA
-├── docs/                    # Vision, architecture, sécurité, roadmap, suivi maître
-├── infra/                   # Caddy et configuration strfry
-├── packages/db/             # Initialisation et accès PostgreSQL
+├── .github/                 # Workflows, templates d’issues et de pull requests
+├── AGENTS.md                # Règles de travail pour agents IA
+├── docs/                    # Vision, architecture, sécurité, roadmap et suivi projet
+├── infra/                   # Configuration d’infrastructure
+├── packages/db/             # Schéma et accès à l’état métier
 ├── packages/shared/         # Types et constantes partagés
-├── services/api/            # API Fastify + interface admin + assets admin
-├── services/worker/         # Indexer Nostr + orchestrateur publisher
-├── scripts/                 # Validation locale
-├── docker-compose.yml       # Stack locale / staging
+├── services/api/            # API et interface admin
+├── services/worker/         # Traitements asynchrones, sources et publishers
+├── scripts/                 # Scripts de validation locale
+├── docker-compose.yml       # Environnement local / staging
 ├── .env.example             # Variables d’environnement documentées
 └── pnpm-lock.yaml           # Lockfile obligatoire
 ```
 
-## Travail avec agents IA
+## Documentation de référence
 
-RelayPress contient maintenant une base minimale pour travailler proprement avec Codex, GitHub Copilot ou un autre agent IA :
-
-- `AGENTS.md` : règles de travail, contraintes de sécurité, source de vérité et Definition of Done ;
-- `.github/ISSUE_TEMPLATE/00-agent-task.yml` : formulaire d’issue pour créer des tâches agentiques limitées, vérifiables et reliées au projet ;
-- `.github/pull_request_template.md` : template de Pull Request pour cadrer le scope, les vérifications, les risques et la revue humaine.
-
-Règle opérationnelle :
+La source de vérité opérationnelle est :
 
 ```txt
-Une issue = une tâche = une PR possible.
-```
-
-Avant toute modification structurante, relire :
-
-```txt
-AGENTS.md
 docs/MASTER_PROJECT_TRACKING.md
 ```
 
-## Démarrage local
+La roadmap détaillée est dans :
 
-```bash
-cp .env.example .env
-pnpm install
-pnpm check
+```txt
+docs/05_ROADMAP.md
 ```
 
-Avec Docker :
+Les règles de contribution agent IA sont dans :
 
-```bash
-docker compose up -d --build
+```txt
+AGENTS.md
 ```
-
-## Déploiement staging
-
-```bash
-cd /opt/relaypress
-git pull
-docker compose up -d --build
-
-export ADMIN_API_TOKEN="$(grep '^ADMIN_API_TOKEN=' .env | cut -d= -f2-)"
-echo "Token length: ${#ADMIN_API_TOKEN}"
-```
-
-## Documentation de référence
-
-Le fichier `docs/MASTER_PROJECT_TRACKING.md` est la source de vérité opérationnelle du projet. Les autres documents doivent rester cohérents avec lui.
 
 ## Licence
 
-Ce projet est placé sous licence **AGPL-3.0-or-later**.
+RelayPress est placé sous licence **AGPL-3.0-or-later**.
 
 Cette licence est volontairement protectrice pour un projet serveur : si RelayPress est modifié et exploité comme service réseau, les améliorations doivent rester accessibles à la communauté.
