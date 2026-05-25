@@ -2,27 +2,29 @@
 
 Ce document est la **source de vérité opérationnelle synthétique** du projet RelayPress.
 
-Il ne contient plus les détails d’architecture, de déploiement, de sécurité ou de roadmap. Ces informations vivent dans les documents spécialisés listés plus bas.
+Il ne contient pas les détails longs d’architecture, de déploiement, de sécurité ou de roadmap. Ces informations vivent dans les documents spécialisés listés plus bas.
 
-Dernière mise à jour : 2026-05-11
+Dernière mise à jour : 2026-05-25
 
-État global : **MVP éditorial souverain fonctionnel en staging, documentation rationalisée, workflow agent IA actif, publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → IA → validation → publication multi-canal. Publishers réels non activés par défaut.**
 
 ---
 
 ## 1. Résumé exécutif
 
-RelayPress est un système d’orchestration éditoriale souverain piloté par Nostr.
+RelayPress est une application d’orchestration éditoriale souveraine.
 
-Son rôle est de transformer une intention éditoriale signée ou un brouillon manuel en jobs de publication contrôlés, adaptés par plateforme, validés humainement, publiés via un publisher et audités dans le temps.
+Son rôle est de transformer des sources d’information sélectionnées en contenus prêts à publier sur plusieurs canaux, avec génération assistée par IA, validation humaine, publication contrôlée et audit.
 
 RelayPress n’est pas un simple crossposter. Le cœur du système est la séparation nette entre :
 
 ```text
+Sources éditoriales = matière première récupérée ou sélectionnée
 Nostr = intention signée + journal souverain
 PostgreSQL = état métier opérationnel
 API admin = pilotage humain
-Worker = indexation, adaptation, orchestration publisher
+IA = génération et adaptation contrôlées
+Worker = récupération, orchestration publisher et tâches asynchrones
 Publishers = sorties externes contrôlées
 ```
 
@@ -30,12 +32,13 @@ Publishers = sorties externes contrôlées
 
 ## 2. Principes non négociables
 
-- Nostr reste la racine souveraine des intentions éditoriales.
+- Nostr reste une racine souveraine des intentions éditoriales et du journal de publication.
 - PostgreSQL porte l’état métier opérationnel.
 - Aucun `nsec` ne doit être stocké en clair.
 - Les tokens OAuth doivent être chiffrés avant tout branchement réel durable.
 - Pas de scraping de réseaux sociaux.
 - Publication externe uniquement via API officielles.
+- L’IA propose, l’humain valide, le publisher exécute.
 - Les contenus sensibles restent soumis à validation humaine.
 - Les actions importantes doivent être auditables.
 - Un job déjà publié ne doit jamais être republié accidentellement.
@@ -62,20 +65,24 @@ Publishers = sorties externes contrôlées
 | Relay Nostr privé | strfry |
 | Reverse proxy | Caddy |
 | Publisher actif par défaut | mock |
-| Publisher LinkedIn réel | préparé, non activé par défaut |
-| Interface admin | fonctionnelle pour MVP |
+| Publisher LinkedIn réel | préparé, à finaliser en premier |
+| Interface admin | fonctionnelle pour MVP, à étendre aux sources et campagnes |
+| Sources automatisées | à implémenter, BTC Breakdown en premier |
+| Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
 | Workflow agent IA | actif, via issue atomique, PR dédiée et revue humaine |
+| Backlog GitHub | nettoyé au 2026-05-25 |
 
 ---
 
-## 4. Architecture logique synthétique
+## 4. Architecture logique synthétique cible
 
 ```text
-Nostr event ou brouillon manuel
-→ publication_jobs
-→ source_content conservé
-→ adapted_content généré ou édité
+Source éditoriale récupérée ou brouillon manuel
+→ sélection humaine
+→ campagne éditoriale
+→ publication_jobs par plateforme
+→ adapted_content généré par IA ou édité humainement
 → validation humaine
 → worker
 → publisher mock ou réel
@@ -87,10 +94,10 @@ Composants principaux :
 
 ```text
 services/api      = API Fastify + interface admin
-services/worker   = indexer Nostr + orchestration publisher
+services/worker   = récupération des sources, indexer Nostr, orchestration publisher
 packages/db       = initialisation et accès PostgreSQL
 packages/shared   = types et constantes partagés
-infra/            = Caddy + strfry
+infra/            = configuration d’infrastructure
 ```
 
 Détails : voir `docs/01_ARCHITECTURE.md`.
@@ -126,16 +133,16 @@ Transitions sensibles :
 | `AGENTS.md` | règles de travail pour agents IA dans ce dépôt |
 | `.github/ISSUE_TEMPLATE/00-agent-task.yml` | Issue Form GitHub pour créer une tâche agent IA atomique |
 | `.github/pull_request_template.md` | template GitHub pour cadrer les Pull Requests |
-| `docs/DOCUMENTATION_AUDIT.md` | audit documentaire et plan de refactor |
+| `docs/DOCUMENTATION_AUDIT.md` | audit documentaire et plan de refactor historique |
 | `docs/00_PROJECT_VISION.md` | vision, doctrine, positionnement |
 | `docs/01_ARCHITECTURE.md` | architecture logique et composants |
 | `docs/02_NOSTR_EVENT_MODEL.md` | modèle d’événements Nostr |
 | `docs/03_SECURITY_MODEL.md` | sécurité, secrets, OAuth, logs, publication réelle |
 | `docs/04_DEPLOYMENT_CADDY_DOCKER.md` | déploiement staging, Docker, Caddy, exploitation |
-| `docs/05_ROADMAP.md` | roadmap et phases projet |
+| `docs/05_ROADMAP.md` | roadmap et prochaines étapes produit |
 | `docs/06_CI_NOTES.md` | CI, Node, pnpm, lockfile, Docker checks |
 | `docs/07_AGENT_WORKFLOW.md` | workflow Codex, Copilot et agents IA |
-| `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | Phase F, comptes publishers, OAuth admin |
+| `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | comptes publishers, OAuth admin et chiffrement |
 | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn réel contrôlé |
 
 Règle : le master pointe vers les détails. Les documents spécialisés portent les détails.
@@ -147,22 +154,28 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-Phase F — Comptes publishers, OAuth admin et préparation des publishers réels
+Alignement documentaire de la trajectoire produit, puis Phase A — Sources éditoriales automatisées.
 ```
 
 ### Priorités courantes
 
-1. Valider l’admin publishers en staging.
-2. Valider le flux OAuth LinkedIn admin sans exposition de secret.
-3. Garder `PUBLISHER_MODE=mock` par défaut.
-4. Préparer le test LinkedIn réel contrôlé uniquement après validation humaine explicite.
-5. Poursuivre les issues atomiques Phase F.
+1. Aligner README, roadmap et master tracking sur la trajectoire source → IA → validation → publication.
+2. Implémenter la récupération automatique BTC Breakdown toutes les 12 heures.
+3. Ajouter le bloc admin des sources récupérées.
+4. Permettre de créer des jobs depuis une source avec sélection des plateformes.
+5. Ajouter la génération IA contrôlée par plateforme.
+6. Ajouter la vue admin groupée par source / campagne.
+7. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
 
-### Issues actives liées
+### Backlog immédiat cible
 
 ```text
-#3  Synchroniser MASTER_PROJECT_TRACKING avec le workflow agent IA
-#14 Auditer et refactoriser la documentation RelayPress
+PR documentaire — Aligner documentation et roadmap produit
+PR A — Sources BTC Breakdown automatisées
+PR B — Jobs depuis source avec source_item_id
+PR C — Génération IA contrôlée
+PR D — Vue admin groupée par source
+PR E — Finaliser LinkedIn réel contrôlé
 ```
 
 ---
@@ -177,6 +190,10 @@ Phase F — Comptes publishers, OAuth admin et préparation des publishers réel
 | 2026-05-11 | `DOCUMENTATION_AUDIT.md` devient la base du refactor documentaire. |
 | 2026-05-11 | `MASTER_PROJECT_TRACKING.md` est réduit en document cœur synthétique. |
 | 2026-05-11 | `AGENTS.md`, l’Issue Form agent IA et le template PR sont référencés comme sources structurantes. |
+| 2026-05-25 | Backlog GitHub nettoyé avant la nouvelle trajectoire produit. |
+| 2026-05-25 | Trajectoire validée : BTC Breakdown → sélection humaine → IA → jobs par plateforme → validation → publication contrôlée. |
+| 2026-05-25 | `publication_jobs` reste le cœur opérationnel ; rattachement source prévu via `source_item_id`. |
+| 2026-05-25 | LinkedIn réel sera finalisé avant Nostr, Blog, Facebook et Instagram. |
 
 ---
 
@@ -186,9 +203,11 @@ Phase F — Comptes publishers, OAuth admin et préparation des publishers réel
 |---|---|---|
 | Publication réelle accidentelle | contrôlé par défaut mock | `docs/03_SECURITY_MODEL.md` |
 | Exposition de secret OAuth ou admin | à surveiller | `docs/03_SECURITY_MODEL.md` |
-| Divergence documentaire | réduit par le refactor documentaire | `docs/DOCUMENTATION_AUDIT.md` |
-| CI ou lockfile incohérent | à vérifier régulièrement | `docs/06_CI_NOTES.md` |
-| Runbook LinkedIn réel incomplet | à utiliser uniquement en test contrôlé | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
+| Génération IA publiée sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
+| Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md` |
+| Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
+| CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
+| Runbook LinkedIn réel incomplet | à consolider avant test réel | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
 | Sauvegardes et monitoring production | non finalisés | `docs/05_ROADMAP.md` |
 
 ---
@@ -210,5 +229,5 @@ Phase F — Comptes publishers, OAuth admin et préparation des publishers réel
 ## 11. Prochaine action recommandée
 
 ```text
-Poursuivre les issues atomiques Phase F : admin publishers, OAuth LinkedIn, check-connection, sécurité des logs et runbook de test réel.
+Merger la PR documentaire d’alignement, puis ouvrir la première issue technique : récupérer automatiquement les derniers contenus BTC Breakdown et les afficher dans l’admin.
 ```
