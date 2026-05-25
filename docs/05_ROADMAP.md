@@ -1,6 +1,20 @@
 # Roadmap RelayPress
 
-Cette roadmap doit rester cohérente avec `docs/MASTER_PROJECT_TRACKING.md`, qui est la source de vérité opérationnelle.
+Cette roadmap doit rester cohérente avec `docs/MASTER_PROJECT_TRACKING.md`, source de vérité opérationnelle synthétique du projet.
+
+RelayPress évolue d’un MVP de jobs éditoriaux vers une application produit complète :
+
+```text
+sources éditoriales
+→ sélection humaine
+→ campagnes multi-formats
+→ génération IA contrôlée
+→ validation humaine
+→ publication multi-canal
+→ audit
+```
+
+---
 
 ## Phases terminées
 
@@ -10,8 +24,8 @@ Statut : ✅ terminé
 
 - vision RelayPress clarifiée ;
 - refus du simple crossposter ;
-- Nostr défini comme plan de contrôle ;
-- IA future définie comme adaptation sous contraintes.
+- Nostr défini comme racine souveraine et journal éditorial ;
+- validation humaine identifiée comme garde-fou central.
 
 ### Phase 1 — Socle dépôt et CI
 
@@ -22,23 +36,17 @@ Statut : ✅ terminé
 - monorepo pnpm ;
 - Node 24 ;
 - TypeScript NodeNext ;
-- `pnpm-lock.yaml` présent et obligatoire ;
+- `pnpm-lock.yaml` obligatoire ;
 - CI GitHub Actions ;
-- installation `--frozen-lockfile` ;
 - validation Docker Compose.
 
 ### Phase 2 — Infrastructure Docker / staging
 
 Statut : ✅ terminé et validé en staging
 
-- Caddy ;
-- PostgreSQL ;
-- Redis ;
-- strfry ;
-- API Fastify ;
-- worker RelayPress ;
-- volumes persistants ;
-- HTTPS staging validé.
+- stack locale / staging opérationnelle ;
+- API, worker, base métier, relay Nostr privé et reverse proxy disponibles ;
+- environnement reproductible pour poursuivre les incréments produit.
 
 ### Phase 3 — Indexation Nostr
 
@@ -46,8 +54,7 @@ Statut : ✅ terminé et validé runtime
 
 - connexion au relay privé et aux relays publics configurés ;
 - filtrage par pubkey autorisée ;
-- stockage des événements dans `nostr_events` ;
-- logs worker structurés ;
+- stockage des événements Nostr ;
 - création de jobs depuis commandes `/publish` ou tags dédiés.
 
 ### Phase 4 — Jobs de publication
@@ -56,27 +63,20 @@ Statut : ✅ terminé pour MVP
 
 - `publication_jobs` créés depuis Nostr ;
 - `publication_jobs` créés depuis brouillons manuels ;
-- `source_content` conservé séparément ;
-- `adapted_content` par plateforme ;
-- un job séparé par plateforme ;
+- conservation séparée de la source et du contenu adapté ;
+- un job par plateforme ;
 - statuts métier sécurisés ;
 - archivage non destructif.
 
-### Phase 5 — Interface admin v2
+### Phase 5 — Interface admin MVP
 
 Statut : ✅ terminé pour MVP
 
-- page admin servie par l’API ;
-- assets CSS/JS séparés ;
-- lecture protégée ;
-- vues À traiter, actifs, archives ;
-- filtres statut, plateforme, ordre ;
 - création de brouillon manuel multi-plateforme ;
-- comparaison source/adapted ;
+- comparaison source / contenu adapté ;
 - édition humaine avant validation ;
 - approbation, rejet, retry, reset-review ;
-- readapt depuis `source_content` ;
-- runs visibles ;
+- visualisation des runs ;
 - archivage individuel et groupé.
 
 ### Phase 6 — Audit d’exécution
@@ -85,121 +85,234 @@ Statut : ✅ terminé pour MVP
 
 - table `publication_job_runs` ;
 - un run créé à chaque tentative de publication ;
-- `raw_response` conservée ;
-- statut run `started`, `published` ou `failed` ;
-- consultation depuis l’admin.
+- statut de run conservé ;
+- réponse brute filtrée ou erreur nettoyée conservée pour audit.
 
-### Phase A — Prévisualisation éditoriale par plateforme
-
-Statut : ✅ terminé MVP
-
-- compteur de caractères ;
-- warning contenu vide ;
-- warning X trop long ;
-- warning routage encore visible ;
-- warning Instagram média non géré ;
-- preview simple dans l’admin.
-
-### Phase B — Anti-doublon / retry / reset
-
-Statut : ✅ terminé MVP
-
-- publication interdite si `external_post_id` existe ;
-- publication interdite si `published_at` existe ;
-- approve bloqué sur job publié ;
-- retry limité aux jobs failed ;
-- reset-review limité aux jobs rejected / failed ;
-- worker protégé par claim atomique ;
-- transitions invalides en `409`.
-
-### Phase C — Adaptateur LinkedIn propre sans IA
-
-Statut : ✅ terminé MVP
-
-- `sourceContent` conservé ;
-- `adaptedContent` LinkedIn structuré ;
-- accroche ;
-- paragraphes courts ;
-- appel à discussion ;
-- hashtags ;
-- correction de la duplication sur texte court ;
-- readapt depuis `sourceContent`.
-
-### Phase D — Couche publisher propre
+### Phase 7 — Couche publisher
 
 Statut : ✅ terminé architecture
 
-- interface `PublicationPublisher` ;
+- interface commune de publisher ;
 - publisher mock ;
-- orchestrateur publisher ;
-- plateformes supportées par publisher ;
+- orchestration worker ;
 - vérification de disponibilité avant claim ;
 - mode mock conservé par défaut ;
-- mode LinkedIn réel préparé derrière garde-fous.
+- premier incrément LinkedIn réel préparé derrière garde-fous.
 
-## Phase E — Publisher réel LinkedIn
+### Phase 8 — Nettoyage backlog
 
-Statut : 🚧 en cours — premier incrément implémenté, non activé en staging
+Statut : ✅ terminé
 
-Réalisé :
+- issues ouvertes historiques clôturées ou absorbées ;
+- PR documentaire obsolète fermée ;
+- backlog prêt pour la trajectoire produit source → IA → publication.
 
-- configuration d’endpoint LinkedIn ;
-- implémentation du publisher LinkedIn UGC Posts ;
-- activation uniquement via mode publisher explicite ;
-- mode mock conservé par défaut ;
-- vérification de configuration avant claim ;
-- refus de publier un contenu LinkedIn vide ;
-- extraction de l’identifiant externe depuis la réponse LinkedIn ;
-- erreurs LinkedIn nettoyées via erreur typée ;
-- conservation des erreurs API nettoyées dans `publication_job_runs.raw_response`.
+---
 
-À faire avant test réel :
+## Phase A — Sources éditoriales automatisées
 
-1. Finaliser le mode d’authentification LinkedIn : membre ou page organisation.
-2. Finaliser l’application LinkedIn Developer.
-3. Définir l’URN auteur exact.
-4. Configurer un accès contrôlé sur staging.
-5. Tester sur un compte ou une page contrôlée.
-6. Vérifier le retour API, l’identifiant externe et les runs.
-7. Ne garder le réel activé que pour des fenêtres de test explicites.
+Statut : ⏳ prochaine étape produit
 
-## Phase F — Comptes publishers et chiffrement
+Objectif : récupérer automatiquement des sources éditoriales exploitables dans l’admin.
 
-Statut : ⏳ à faire avant production
+Premier provider :
 
-- table `publisher_accounts` ;
-- provider ;
-- account URN ;
-- display name ;
-- secret d’accès chiffré ;
-- secret de renouvellement chiffré si applicable ;
-- expiration ;
-- scopes ;
-- chiffrement via clé dédiée.
+```text
+BTC Breakdown
+```
 
-## Phase G — Publishers X / Meta / Instagram / autres sorties
+Cadence cible initiale :
+
+```text
+Toutes les 12 heures, autour de 06:00 et 18:00.
+```
+
+Principes :
+
+- commencer par BTC Breakdown uniquement ;
+- prévoir un modèle extensible pour d’autres sources plus tard ;
+- éviter de multiplier les colonnes de base inutilement ;
+- stocker le minimum nécessaire : provider, URL, titre, contenu, statut, métadonnées, timestamps ;
+- afficher les sources récupérées dans l’admin ;
+- laisser l’humain sélectionner ou ignorer une source.
+
+Hors périmètre initial :
+
+- génération IA ;
+- publication ;
+- automatisation complète sans validation humaine.
+
+---
+
+## Phase B — Campagnes depuis une source
+
+Statut : ⏳ après Phase A
+
+Objectif : créer une campagne éditoriale depuis une source sélectionnée.
+
+Décision : réutiliser `publication_jobs` comme cœur opérationnel et ajouter un rattachement minimal :
+
+```text
+publication_jobs.source_item_id
+```
+
+L’admin doit permettre de choisir les plateformes :
+
+```text
+Blog
+Nostr
+LinkedIn
+X
+Facebook
+Instagram
+```
+
+Chaque plateforme produit un job distinct, rattaché à la source.
+
+---
+
+## Phase C — Génération IA contrôlée
+
+Statut : ⏳ après Phase B
+
+Objectif : générer les formats éditoriaux à partir d’une source sélectionnée.
+
+Principe central :
+
+```text
+L’IA propose, l’humain valide, le publisher exécute.
+```
+
+Formats cibles :
+
+| Canal | Orientation |
+|---|---|
+| Blog | long, structuré, sourcé, analytique |
+| Nostr | structure proche du blog, plus synthétique et souveraine |
+| LinkedIn | structure proche du blog, ton professionnel |
+| X | posts courts, 140 caractères maximum |
+| Facebook | format moyen, accessible grand public |
+| Instagram | visuel d’abord, image source ou suggestion visuelle, commentaire d’accompagnement |
+
+Squelette Blog / Nostr / LinkedIn / Facebook :
+
+```text
+Accroche
+Contexte
+Faits importants
+Analyse
+Sources
+CTA final
+```
+
+Exception : X ne reçoit pas de CTA obligatoire, car le format est trop court.
+
+---
+
+## Phase D — Vue admin groupée par source
+
+Statut : ⏳ après Phase C
+
+Objectif : rendre la campagne lisible et actionnable.
+
+Vue cible :
+
+```text
+Source BTC Breakdown
+├── Blog
+├── Nostr
+├── LinkedIn
+├── X
+├── Facebook
+└── Instagram
+```
+
+Chaque bloc doit permettre :
+
+- voir la proposition ;
+- éditer ;
+- régénérer via IA ;
+- approuver ;
+- publier ;
+- copier ou exporter ;
+- consulter l’état et l’historique.
+
+---
+
+## Phase E — Publication réelle LinkedIn
+
+Statut : 🚧 à finaliser en premier côté publisher réel
+
+LinkedIn est prioritaire parce que le premier incrément existe déjà.
+
+Objectif : finaliser une publication réelle contrôlée, sans perte de sécurité.
+
+À couvrir dans une issue consolidée :
+
+1. validation de l’admin publishers ;
+2. validation OAuth LinkedIn ;
+3. test de connexion ;
+4. contrôle des informations affichées ;
+5. contrôle anti-secret des logs et erreurs ;
+6. publication réelle sur compte ou page contrôlée ;
+7. vérification des runs ;
+8. retour immédiat en mode mock ;
+9. note de clôture du test réel.
+
+---
+
+## Phase F — Autres publishers réels
+
+Statut : ⏳ après LinkedIn
+
+Ordre cible :
+
+1. Nostr ;
+2. Blog / WordPress ;
+3. Facebook ;
+4. Instagram ;
+5. X.
+
+Principes :
+
+- publication uniquement via API officielle ;
+- aucun secret dans le dépôt ;
+- tokens chiffrés ;
+- validation humaine avant publication réelle ;
+- audit systématique.
+
+---
+
+## Phase G — Automatisation avancée
 
 Statut : ⏳ plus tard
 
-Ordre recommandé :
+Objectif : réduire l’effort humain sans supprimer le contrôle humain.
 
-1. LinkedIn ;
-2. X ;
-3. Facebook Page ;
-4. Instagram Business ;
-5. Mastodon / WordPress.
+Trajectoire :
+
+```text
+récupération automatique
+→ pré-sélection assistée
+→ génération IA
+→ file de validation humaine
+→ publication programmée
+```
+
+Publication automatique directe : hors cible initiale.
+
+---
 
 ## Phase H — Production durcie
 
 Statut : ⏳ plus tard
 
 - sauvegarde PostgreSQL automatisée ;
-- sauvegarde volumes strfry ;
-- monitoring conteneurs ;
-- monitoring disque ;
+- sauvegarde volumes utiles ;
+- monitoring conteneurs et disque ;
 - alertes ;
 - rotation logs ;
 - rate limiting ;
-- authentification web propre ;
+- authentification web renforcée ;
 - documentation d’exploitation ;
 - procédure de restauration.
