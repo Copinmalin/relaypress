@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
+import { registerAdminSourcesAssets } from "./admin-sources-assets.js";
 import { registerAdminSourcesPage } from "./admin-sources-page.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
@@ -18,6 +19,7 @@ await registerPublicationJobRoutes(app);
 await registerPublisherAccountRoutes(app);
 await registerSourceItemRoutes(app);
 await registerAdminAssets(app);
+await registerAdminSourcesAssets(app);
 await registerAdminPage(app);
 await registerAdminSourcesPage(app);
 
