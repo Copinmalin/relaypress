@@ -20,6 +20,29 @@ export const nostrEvents = pgTable(
   }),
 );
 
+export const editorialSourceItems = pgTable(
+  "editorial_source_items",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    sourceUrl: text("source_url").notNull(),
+    title: text("title").notNull(),
+    excerpt: text("excerpt"),
+    status: varchar("status", { length: 64 }).notNull().default("new"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    metadata: jsonb("metadata").notNull().$type<Record<string, unknown>>().default({}),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    providerUrlIdx: uniqueIndex("editorial_source_items_provider_url_idx").on(table.provider, table.sourceUrl),
+    providerIdx: index("editorial_source_items_provider_idx").on(table.provider),
+    statusIdx: index("editorial_source_items_status_idx").on(table.status),
+    fetchedAtIdx: index("editorial_source_items_fetched_at_idx").on(table.fetchedAt),
+  }),
+);
+
 export const publicationJobs = pgTable(
   "publication_jobs",
   {
