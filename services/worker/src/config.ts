@@ -35,4 +35,9 @@ export const workerConfig = {
   nostrAllowedPubkeys: readCsvEnv("NOSTR_ALLOWED_PUBKEYS"),
   nostrIndexAll: readBooleanEnv("NOSTR_INDEX_ALL", false),
   nostrLookbackSeconds: Number(process.env.NOSTR_LOOKBACK_SECONDS ?? 3600),
+  btcBreakdownIngestEnabled: readBooleanEnv("BTCBREAKDOWN_INGEST_ENABLED", true),
+  btcBreakdownBaseUrl: normalizeBaseUrl(process.env.BTCBREAKDOWN_BASE_URL ?? "https://www.btcbreakdown.com"),
+  btcBreakdownFeedUrls: readCsvEnv("BTCBREAKDOWN_FEED_URLS"),
+  btcBreakdownMaxItems: Number(process.env.BTCBREAKDOWN_MAX_ITEMS ?? 20),
+  btcBreakdownIngestIntervalMs: Number(process.env.BTCBREAKDOWN_INGEST_INTERVAL_MS ?? 43_200_000),
 };
