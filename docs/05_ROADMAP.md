@@ -6,6 +6,7 @@ RelayPress évolue d’un MVP de jobs éditoriaux vers une application produit c
 
 ```text
 sources éditoriales
+→ Signal Engine
 → sélection humaine
 → campagnes multi-formats
 → génération IA contrôlée
@@ -109,9 +110,41 @@ Statut : ✅ terminé
 
 ---
 
+## Phase 9 — Cadrage Signal Engine
+
+Statut : 🚧 en cours
+
+Objectif : cadrer le module qui transforme une source Bitcoin sélectionnée en signal éditorial qualifié, puis en campagne multi-format sous validation humaine.
+
+Document de référence :
+
+```text
+docs/08_SIGNAL_ENGINE.md
+```
+
+Décisions :
+
+- BTC Breakdown sert de radar initial ;
+- BTC Breakdown ne doit pas être recopié ou traduit intégralement ;
+- Telegram est hors scope comme canal de diffusion ;
+- Telegram peut rester une source d’observation humaine, sans connecteur technique initial ;
+- les canaux cibles restent Blog, Nostr, LinkedIn, X, Facebook et Instagram ;
+- le Signal Engine prépare, l’humain valide, le publisher exécute ;
+- aucune publication automatique directe n’est prévue dans le périmètre initial.
+
+Hors périmètre :
+
+- code ;
+- migration SQL ;
+- dépendance nouvelle ;
+- publisher réel ;
+- scraping de réseaux sociaux.
+
+---
+
 ## Phase A — Sources éditoriales automatisées
 
-Statut : ⏳ prochaine étape produit
+Statut : ⏳ prochaine étape produit après cadrage Signal Engine
 
 Objectif : récupérer automatiquement des sources éditoriales exploitables dans l’admin.
 
@@ -132,29 +165,60 @@ Principes :
 - commencer par BTC Breakdown uniquement ;
 - prévoir un modèle extensible pour d’autres sources plus tard ;
 - éviter de multiplier les colonnes de base inutilement ;
-- stocker le minimum nécessaire : provider, URL, titre, contenu, statut, métadonnées, timestamps ;
+- stocker le minimum nécessaire : provider, URL, titre, extrait court, statut, métadonnées, timestamps ;
 - afficher les sources récupérées dans l’admin ;
-- laisser l’humain sélectionner ou ignorer une source.
+- laisser l’humain sélectionner, ignorer ou archiver une source ;
+- ne pas générer de contenu publiable à cette phase.
 
 Hors périmètre initial :
 
 - génération IA ;
 - publication ;
-- automatisation complète sans validation humaine.
+- automatisation complète sans validation humaine ;
+- ingestion Telegram ;
+- scraping de réseaux sociaux.
 
 ---
 
-## Phase B — Campagnes depuis une source
+## Phase B — Signaux éditoriaux qualifiés
 
 Statut : ⏳ après Phase A
 
-Objectif : créer une campagne éditoriale depuis une source sélectionnée.
+Objectif : introduire la notion de signal éditorial qualifié sans casser le cœur opérationnel existant.
+
+Le concept cible est décrit dans `docs/08_SIGNAL_ENGINE.md` :
+
+```text
+EditorialSignal
+```
+
+Un signal doit permettre de conserver :
+
+- la source d’origine ;
+- le résumé interne ;
+- la catégorie ;
+- l’angle souveraineté / Bitcoin ;
+- le niveau de risque ;
+- les sources primaires ou complémentaires ;
+- le statut éditorial.
+
+Cette phase ne doit pas encore générer de campagne automatiquement.
+
+---
+
+## Phase C — Campagnes depuis une source ou un signal
+
+Statut : ⏳ après Phase B
+
+Objectif : créer une campagne éditoriale depuis une source sélectionnée ou un signal qualifié.
 
 Décision : réutiliser `publication_jobs` comme cœur opérationnel et ajouter un rattachement minimal :
 
 ```text
 publication_jobs.source_item_id
 ```
+
+Un rattachement futur à un signal pourra être ajouté dans une PR dédiée si le modèle `EditorialSignal` est matérialisé.
 
 L’admin doit permettre de choisir les plateformes :
 
@@ -167,15 +231,15 @@ Facebook
 Instagram
 ```
 
-Chaque plateforme produit un job distinct, rattaché à la source.
+Chaque plateforme produit un job distinct, rattaché à la source ou au signal.
 
 ---
 
-## Phase C — Génération IA contrôlée
+## Phase D — Génération IA contrôlée
 
-Statut : ⏳ après Phase B
+Statut : ⏳ après Phase C
 
-Objectif : générer les formats éditoriaux à partir d’une source sélectionnée.
+Objectif : générer les formats éditoriaux à partir d’une source ou d’un signal sélectionné.
 
 Principe central :
 
@@ -188,30 +252,44 @@ Formats cibles :
 | Canal | Orientation |
 |---|---|
 | Blog | long, structuré, sourcé, analytique |
-| Nostr | structure proche du blog, plus synthétique et souveraine |
-| LinkedIn | structure proche du blog, ton professionnel |
-| X | posts courts, 140 caractères maximum |
+| Nostr | court à moyen, souverain, source ou lien Blog |
+| LinkedIn | format moyen, ton professionnel, angle business ou gouvernance |
+| X | posts courts, angle fort, CTA non obligatoire |
 | Facebook | format moyen, accessible grand public |
-| Instagram | visuel d’abord, image source ou suggestion visuelle, commentaire d’accompagnement |
+| Instagram | visuel d’abord, carrousel ou brief visuel, commentaire d’accompagnement |
 
-Squelette Blog / Nostr / LinkedIn / Facebook :
+Squelette Blog :
+
+```text
+Titre
+Accroche
+Contexte
+Faits établis
+Analyse
+Implications Bitcoin / souveraineté
+Limites ou incertitudes
+Sources
+CTA
+```
+
+Squelette Nostr / LinkedIn / Facebook :
 
 ```text
 Accroche
 Contexte
 Faits importants
 Analyse
-Sources
-CTA final
+Source ou lien Blog
+CTA final selon canal
 ```
 
 Exception : X ne reçoit pas de CTA obligatoire, car le format est trop court.
 
 ---
 
-## Phase D — Vue admin groupée par source
+## Phase E — Vue admin groupée par source / signal / campagne
 
-Statut : ⏳ après Phase C
+Statut : ⏳ après Phase D
 
 Objectif : rendre la campagne lisible et actionnable.
 
@@ -219,12 +297,13 @@ Vue cible :
 
 ```text
 Source BTC Breakdown
-├── Blog
-├── Nostr
-├── LinkedIn
-├── X
-├── Facebook
-└── Instagram
+└── Signal qualifié
+    ├── Blog
+    ├── Nostr
+    ├── LinkedIn
+    ├── X
+    ├── Facebook
+    └── Instagram
 ```
 
 Chaque bloc doit permettre :
@@ -239,7 +318,7 @@ Chaque bloc doit permettre :
 
 ---
 
-## Phase E — Publication réelle LinkedIn
+## Phase F — Publication réelle LinkedIn
 
 Statut : 🚧 à finaliser en premier côté publisher réel
 
@@ -261,7 +340,7 @@ Objectif : finaliser une publication réelle contrôlée, sans perte de sécurit
 
 ---
 
-## Phase F — Autres publishers réels
+## Phase G — Autres publishers réels
 
 Statut : ⏳ après LinkedIn
 
@@ -283,7 +362,7 @@ Principes :
 
 ---
 
-## Phase G — Automatisation avancée
+## Phase H — Automatisation avancée
 
 Statut : ⏳ plus tard
 
@@ -303,7 +382,25 @@ Publication automatique directe : hors cible initiale.
 
 ---
 
-## Phase H — Production durcie
+## Phase I — Diagnostics éditoriaux et sécurité Signal Engine
+
+Statut : ⏳ plus tard
+
+Objectif : ajouter des diagnostics inspirés de l’approche `doctor` et `security-audit`, sans reprendre la stack iAgent.
+
+Pistes :
+
+- vérifier que les sources configurées répondent ;
+- détecter les URLs invalides ;
+- détecter les contenus trop longs recopiés depuis une source ;
+- signaler les brouillons sans source ;
+- signaler les brouillons avec termes sensibles ;
+- confirmer que `PUBLISHER_MODE=mock` reste le défaut sûr ;
+- contrôler l’absence de secrets dans les logs et métadonnées.
+
+---
+
+## Phase J — Production durcie
 
 Statut : ⏳ plus tard
 

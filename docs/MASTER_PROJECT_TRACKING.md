@@ -4,9 +4,9 @@ Ce document est la **source de vérité opérationnelle synthétique** du projet
 
 Il ne contient pas les détails longs d’architecture, de déploiement, de sécurité ou de roadmap. Ces informations vivent dans les documents spécialisés listés plus bas.
 
-Dernière mise à jour : 2026-05-25
+Dernière mise à jour : 2026-06-05
 
-État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → IA → validation → publication multi-canal. Publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. Publishers réels non activés par défaut.**
 
 ---
 
@@ -20,6 +20,7 @@ RelayPress n’est pas un simple crossposter. Le cœur du système est la sépar
 
 ```text
 Sources éditoriales = matière première récupérée ou sélectionnée
+Signal Engine = qualification, contextualisation et préparation de campagnes
 Nostr = intention signée + journal souverain
 PostgreSQL = état métier opérationnel
 API admin = pilotage humain
@@ -47,6 +48,8 @@ Publishers = sorties externes contrôlées
 - Node 24 est la cible runtime et CI.
 - Docker Compose reste la base de reproductibilité staging.
 - `PUBLISHER_MODE=mock` reste le défaut sûr tant que les publishers réels ne sont pas durcis.
+- Telegram est hors scope comme canal de diffusion RelayPress et ne doit pas devenir une dépendance technique prioritaire.
+- BTC Breakdown sert de radar initial, pas de contenu à republier tel quel.
 
 ---
 
@@ -66,8 +69,9 @@ Publishers = sorties externes contrôlées
 | Reverse proxy | Caddy |
 | Publisher actif par défaut | mock |
 | Publisher LinkedIn réel | préparé, à finaliser en premier |
-| Interface admin | fonctionnelle pour MVP, à étendre aux sources et campagnes |
+| Interface admin | fonctionnelle pour MVP, à étendre aux sources, signaux et campagnes |
 | Sources automatisées | à implémenter, BTC Breakdown en premier |
+| Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, à implémenter par PR atomiques |
 | Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
 | Workflow agent IA | actif, via issue atomique, PR dédiée et revue humaine |
@@ -79,6 +83,8 @@ Publishers = sorties externes contrôlées
 
 ```text
 Source éditoriale récupérée ou brouillon manuel
+→ Signal Engine
+→ signal éditorial qualifié
 → sélection humaine
 → campagne éditoriale
 → publication_jobs par plateforme
@@ -100,7 +106,7 @@ packages/shared   = types et constantes partagés
 infra/            = configuration d’infrastructure
 ```
 
-Détails : voir `docs/01_ARCHITECTURE.md`.
+Détails : voir `docs/01_ARCHITECTURE.md` et `docs/08_SIGNAL_ENGINE.md`.
 
 ---
 
@@ -124,6 +130,8 @@ Transitions sensibles :
 - `archive` interdit depuis `publishing` ;
 - aucun job déjà publié ne doit repasser en publication.
 
+Les statuts conceptuels du futur `EditorialSignal` sont décrits dans `docs/08_SIGNAL_ENGINE.md`. Ils ne remplacent pas les statuts opérationnels actuels de `publication_jobs` tant qu’une migration dédiée n’a pas été validée.
+
 ---
 
 ## 6. Sources de vérité spécialisées
@@ -142,6 +150,7 @@ Transitions sensibles :
 | `docs/05_ROADMAP.md` | roadmap et prochaines étapes produit |
 | `docs/06_CI_NOTES.md` | CI, Node, pnpm, lockfile, Docker checks |
 | `docs/07_AGENT_WORKFLOW.md` | workflow Codex, Copilot et agents IA |
+| `docs/08_SIGNAL_ENGINE.md` | cadrage du Signal Engine : BTC Breakdown, signaux, canaux, contraintes et roadmap |
 | `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | comptes publishers, OAuth admin et chiffrement |
 | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn réel contrôlé |
 
@@ -154,28 +163,30 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-Alignement documentaire de la trajectoire produit, puis Phase A — Sources éditoriales automatisées.
+Cadrage documentaire du Signal Engine, puis Phase A — Sources éditoriales automatisées.
 ```
 
 ### Priorités courantes
 
-1. Aligner README, roadmap et master tracking sur la trajectoire source → IA → validation → publication.
+1. Merger le cadrage `docs/08_SIGNAL_ENGINE.md`.
 2. Implémenter la récupération automatique BTC Breakdown toutes les 12 heures.
 3. Ajouter le bloc admin des sources récupérées.
-4. Permettre de créer des jobs depuis une source avec sélection des plateformes.
-5. Ajouter la génération IA contrôlée par plateforme.
-6. Ajouter la vue admin groupée par source / campagne.
-7. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
+4. Introduire la notion de signal éditorial qualifié sans casser `publication_jobs`.
+5. Permettre de créer des jobs depuis une source ou un signal avec sélection des plateformes.
+6. Ajouter la génération IA contrôlée par plateforme.
+7. Ajouter la vue admin groupée par source / signal / campagne.
+8. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
 
 ### Backlog immédiat cible
 
 ```text
-PR documentaire — Aligner documentation et roadmap produit
+PR documentaire — Cadrer le Signal Engine
 PR A — Sources BTC Breakdown automatisées
-PR B — Jobs depuis source avec source_item_id
-PR C — Génération IA contrôlée
-PR D — Vue admin groupée par source
-PR E — Finaliser LinkedIn réel contrôlé
+PR B — Signal éditorial qualifié et rattachement source
+PR C — Jobs depuis source ou signal avec source_item_id
+PR D — Génération IA contrôlée
+PR E — Vue admin groupée par source / signal / campagne
+PR F — Finaliser LinkedIn réel contrôlé
 ```
 
 ---
@@ -194,6 +205,7 @@ PR E — Finaliser LinkedIn réel contrôlé
 | 2026-05-25 | Trajectoire validée : BTC Breakdown → sélection humaine → IA → jobs par plateforme → validation → publication contrôlée. |
 | 2026-05-25 | `publication_jobs` reste le cœur opérationnel ; rattachement source prévu via `source_item_id`. |
 | 2026-05-25 | LinkedIn réel sera finalisé avant Nostr, Blog, Facebook et Instagram. |
+| 2026-06-05 | Signal Engine validé comme cadrage produit : BTC Breakdown comme radar initial, Telegram hors scope diffusion, canaux cibles Blog/Nostr/LinkedIn/X/Facebook/Instagram. |
 
 ---
 
@@ -204,7 +216,9 @@ PR E — Finaliser LinkedIn réel contrôlé
 | Publication réelle accidentelle | contrôlé par défaut mock | `docs/03_SECURITY_MODEL.md` |
 | Exposition de secret OAuth ou admin | à surveiller | `docs/03_SECURITY_MODEL.md` |
 | Génération IA publiée sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
-| Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md` |
+| Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md` |
+| Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md` |
+| Telegram transformé en dépendance technique | hors scope diffusion et ingestion automatique initiale | `docs/08_SIGNAL_ENGINE.md` |
 | Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
 | CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
 | Runbook LinkedIn réel incomplet | à consolider avant test réel | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
@@ -229,5 +243,5 @@ PR E — Finaliser LinkedIn réel contrôlé
 ## 11. Prochaine action recommandée
 
 ```text
-Merger la PR documentaire d’alignement, puis ouvrir la première issue technique : récupérer automatiquement les derniers contenus BTC Breakdown et les afficher dans l’admin.
+Merger le cadrage Signal Engine, puis ouvrir la première issue technique : récupérer automatiquement les derniers contenus BTC Breakdown et les afficher dans l’admin sans génération IA ni publication.
 ```
