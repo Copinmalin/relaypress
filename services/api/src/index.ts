@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
+import { registerEditorialSourceRoutes } from "./editorial-sources.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
 
@@ -12,6 +13,7 @@ const port = Number(process.env.PORT ?? 3000);
 await migrateDatabase();
 
 await app.register(cors, { origin: true });
+await registerEditorialSourceRoutes(app);
 await registerPublicationJobRoutes(app);
 await registerPublisherAccountRoutes(app);
 await registerAdminAssets(app);
