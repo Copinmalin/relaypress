@@ -6,7 +6,7 @@ Il ne contient pas les détails longs d’architecture, de déploiement, de séc
 
 Dernière mise à jour : 2026-06-05
 
-État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. Publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, Signal Engine cadré, première brique d’ingestion BTC Breakdown en cours. Publishers réels non activés par défaut.**
 
 ---
 
@@ -69,9 +69,9 @@ Publishers = sorties externes contrôlées
 | Reverse proxy | Caddy |
 | Publisher actif par défaut | mock |
 | Publisher LinkedIn réel | préparé, à finaliser en premier |
-| Interface admin | fonctionnelle pour MVP, à étendre aux sources, signaux et campagnes |
-| Sources automatisées | à implémenter, BTC Breakdown en premier |
-| Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, à implémenter par PR atomiques |
+| Interface admin | fonctionnelle pour MVP, extension `/admin/sources` en cours |
+| Sources automatisées | BTC Breakdown en cours via `editorial_source_items` |
+| Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, ingestion initiale en cours |
 | Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
 | Workflow agent IA | actif, via issue atomique, PR dédiée et revue humaine |
@@ -130,7 +130,15 @@ Transitions sensibles :
 - `archive` interdit depuis `publishing` ;
 - aucun job déjà publié ne doit repasser en publication.
 
-Les statuts conceptuels du futur `EditorialSignal` sont décrits dans `docs/08_SIGNAL_ENGINE.md`. Ils ne remplacent pas les statuts opérationnels actuels de `publication_jobs` tant qu’une migration dédiée n’a pas été validée.
+Statuts des sources éditoriales récupérées :
+
+```text
+new       = source récupérée, non traitée
+ignored   = source volontairement ignorée
+archived  = source conservée pour audit, masquée selon filtres
+```
+
+Ces statuts ne déclenchent ni génération IA, ni campagne, ni publication.
 
 ---
 
@@ -163,24 +171,22 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-Cadrage documentaire du Signal Engine, puis Phase A — Sources éditoriales automatisées.
+Phase A — Sources éditoriales automatisées : ingestion BTC Breakdown et affichage admin, sans IA ni publication.
 ```
 
 ### Priorités courantes
 
-1. Merger le cadrage `docs/08_SIGNAL_ENGINE.md`.
-2. Implémenter la récupération automatique BTC Breakdown toutes les 12 heures.
-3. Ajouter le bloc admin des sources récupérées.
-4. Introduire la notion de signal éditorial qualifié sans casser `publication_jobs`.
-5. Permettre de créer des jobs depuis une source ou un signal avec sélection des plateformes.
-6. Ajouter la génération IA contrôlée par plateforme.
-7. Ajouter la vue admin groupée par source / signal / campagne.
-8. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
+1. Merger l’ingestion BTC Breakdown et la page `/admin/sources`.
+2. Vérifier en staging que la source se récupère sans crasher le worker.
+3. Introduire la notion de signal éditorial qualifié sans casser `publication_jobs`.
+4. Permettre de créer des jobs depuis une source ou un signal avec sélection des plateformes.
+5. Ajouter la génération IA contrôlée par plateforme.
+6. Ajouter la vue admin groupée par source / signal / campagne.
+7. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
 
 ### Backlog immédiat cible
 
 ```text
-PR documentaire — Cadrer le Signal Engine
 PR A — Sources BTC Breakdown automatisées
 PR B — Signal éditorial qualifié et rattachement source
 PR C — Jobs depuis source ou signal avec source_item_id
@@ -206,6 +212,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | 2026-05-25 | `publication_jobs` reste le cœur opérationnel ; rattachement source prévu via `source_item_id`. |
 | 2026-05-25 | LinkedIn réel sera finalisé avant Nostr, Blog, Facebook et Instagram. |
 | 2026-06-05 | Signal Engine validé comme cadrage produit : BTC Breakdown comme radar initial, Telegram hors scope diffusion, canaux cibles Blog/Nostr/LinkedIn/X/Facebook/Instagram. |
+| 2026-06-05 | Première brique technique lancée : `editorial_source_items`, ingestion BTC Breakdown, page `/admin/sources`, sans IA ni publication. |
 
 ---
 
@@ -219,6 +226,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md` |
 | Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md` |
 | Telegram transformé en dépendance technique | hors scope diffusion et ingestion automatique initiale | `docs/08_SIGNAL_ENGINE.md` |
+| Ingestion source indisponible ou HTML changeant | worker doit loguer l’erreur sans crasher | `docs/08_SIGNAL_ENGINE.md` |
 | Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
 | CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
 | Runbook LinkedIn réel incomplet | à consolider avant test réel | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
@@ -243,5 +251,5 @@ PR F — Finaliser LinkedIn réel contrôlé
 ## 11. Prochaine action recommandée
 
 ```text
-Merger le cadrage Signal Engine, puis ouvrir la première issue technique : récupérer automatiquement les derniers contenus BTC Breakdown et les afficher dans l’admin sans génération IA ni publication.
+Valider la PR A en CI, déployer en staging, puis vérifier /admin/sources et les logs worker BTC Breakdown.
 ```
