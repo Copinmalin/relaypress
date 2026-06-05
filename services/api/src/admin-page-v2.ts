@@ -12,7 +12,7 @@ const adminHtml = String.raw`<!doctype html>
   <main>
     <h1>RelayPress Admin</h1>
     <div class="subtitle">Créer, adapter, valider, publier en mock, archiver et auditer les jobs.</div>
-    <p><a href="/admin/publishers">Comptes publishers</a></p>
+    <p><a href="/admin/sources">Sources éditoriales</a> · <a href="/admin/publishers">Comptes publishers</a></p>
 
     <section class="panel">
       <div class="controls">
@@ -75,6 +75,146 @@ const adminHtml = String.raw`<!doctype html>
 </body>
 </html>`;
 
+const sourcesHtml = String.raw`<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>RelayPress Sources</title>
+  <link rel="stylesheet" href="/assets/admin.css" />
+</head>
+<body>
+  <main>
+    <h1>RelayPress Sources</h1>
+    <div class="subtitle">Sources récupérées par le Signal Engine. Aucune IA, campagne ou publication depuis cette page.</div>
+    <p><a href="/admin">← Retour aux jobs</a> · <a href="/admin/publishers">Comptes publishers</a></p>
+
+    <section class="panel">
+      <div class="controls">
+        <input id="token" type="password" placeholder="ADMIN_API_TOKEN" autocomplete="off" />
+        <select id="provider">
+          <option value="">Tous providers</option>
+          <option value="btcbreakdown">BTC Breakdown</option>
+        </select>
+        <select id="status">
+          <option value="">Tous statuts</option>
+          <option value="new">New</option>
+          <option value="ignored">Ignored</option>
+          <option value="archived">Archived</option>
+        </select>
+        <select id="order">
+          <option value="desc">Plus récent en haut</option>
+          <option value="asc">Plus récent en bas</option>
+        </select>
+        <button class="primary" id="refresh">Rafraîchir</button>
+      </div>
+      <div class="status" id="statusLine">Initialisation…</div>
+      <div class="hint" id="tokenHint"></div>
+    </section>
+
+    <section class="jobs" id="sources"></section>
+  </main>
+  <script>
+    var tokenInput = document.querySelector('#token');
+    var providerInput = document.querySelector('#provider');
+    var statusInput = document.querySelector('#status');
+    var orderInput = document.querySelector('#order');
+    var refreshButton = document.querySelector('#refresh');
+    var cards = document.querySelector('#sources');
+    var statusLine = document.querySelector('#statusLine');
+    var tokenHint = document.querySelector('#tokenHint');
+
+    tokenInput.value = localStorage.getItem('relaypress.adminToken') || '';
+    providerInput.value = localStorage.getItem('relaypress.sourceProvider') || '';
+    statusInput.value = localStorage.getItem('relaypress.sourceStatus') || '';
+    orderInput.value = localStorage.getItem('relaypress.sourceOrder') || 'desc';
+
+    function esc(value) { return String(value == null ? '' : value).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;').replaceAll('"','&quot;').replaceAll("'",'&#039;'); }
+    function date(value) { return value ? new Date(value).toLocaleString('fr-FR') : '—'; }
+    function hasToken() { return tokenInput.value.trim().length > 0; }
+    function updateTokenHint() { tokenHint.textContent = hasToken() ? 'Token admin présent.' : 'Token admin absent.'; }
+    function sourceUrl(id, suffix) { return '/editorial-sources/' + encodeURIComponent(id) + suffix; }
+
+    async function api(path, options) {
+      options = options || {};
+      var token = tokenInput.value.trim();
+      if (!token) throw new Error('ADMIN_API_TOKEN manquant');
+      var response = await fetch(path, { method: options.method || 'GET', headers: { Authorization: 'Bearer ' + token } });
+      var payload = await response.json().catch(function () { return {}; });
+      if (!response.ok) throw new Error(payload.message || payload.error || ('HTTP ' + response.status));
+      return payload;
+    }
+
+    function saveFilters() {
+      localStorage.setItem('relaypress.sourceProvider', providerInput.value);
+      localStorage.setItem('relaypress.sourceStatus', statusInput.value);
+      localStorage.setItem('relaypress.sourceOrder', orderInput.value);
+    }
+
+    function buildQuery() {
+      var params = new URLSearchParams();
+      params.set('limit', '100');
+      params.set('order', orderInput.value);
+      if (providerInput.value) params.set('provider', providerInput.value);
+      if (statusInput.value) params.set('status', statusInput.value);
+      return params;
+    }
+
+    async function setStatus(id, suffix) {
+      await api(sourceUrl(id, suffix), { method: 'POST' });
+      await loadSources();
+    }
+
+    function row(label, value) { return '<div class="meta"><strong>' + esc(label) + ':</strong> ' + value + '</div>'; }
+
+    function sourceCard(source) {
+      var html = '';
+      html += '<article class="job">';
+      html += '<div class="job-header"><div class="badges"><span class="badge">' + esc(source.provider) + '</span><span class="badge ' + esc(source.status) + '">' + esc(source.status) + '</span></div><div class="meta">Récupéré: ' + date(source.fetchedAt) + '<br/>Mis à jour: ' + date(source.updatedAt) + '</div></div>';
+      html += '<h2>' + esc(source.title || 'Sans titre') + '</h2>';
+      html += row('URL', '<a href="' + esc(source.sourceUrl) + '" target="_blank" rel="noopener noreferrer">' + esc(source.sourceUrl) + '</a>');
+      html += row('Publié source', esc(date(source.publishedAt)));
+      html += '<div class="content">' + esc(source.excerpt || '—') + '</div>';
+      html += '<div class="actions"><button data-action="reset">Remettre en new</button><button data-action="ignore">Ignorer</button><button data-action="archive">Archiver</button><button data-action="copy">Copier URL</button></div>';
+      html += '<details><summary>Métadonnées</summary><pre>' + esc(JSON.stringify(source.metadata, null, 2)) + '</pre></details>';
+      html += '</article>';
+      var wrap = document.createElement('div');
+      wrap.innerHTML = html;
+      var card = wrap.firstElementChild;
+      card.querySelector('[data-action="reset"]').addEventListener('click', function () { setStatus(source.id, '/reset').catch(function (error) { alert(error.message); }); });
+      card.querySelector('[data-action="ignore"]').addEventListener('click', function () { setStatus(source.id, '/ignore').catch(function (error) { alert(error.message); }); });
+      card.querySelector('[data-action="archive"]').addEventListener('click', function () { setStatus(source.id, '/archive').catch(function (error) { alert(error.message); }); });
+      card.querySelector('[data-action="copy"]').addEventListener('click', function () { navigator.clipboard.writeText(source.sourceUrl); statusLine.textContent = 'URL copiée.'; });
+      return card;
+    }
+
+    async function loadSources() {
+      updateTokenHint();
+      saveFilters();
+      cards.innerHTML = '';
+      statusLine.textContent = 'Chargement…';
+      try {
+        var payload = await api('/editorial-sources?' + buildQuery().toString());
+        statusLine.textContent = payload.count + ' source(s).';
+        if (!payload.sources.length) {
+          cards.innerHTML = '<div class="panel empty">Aucune source pour ces filtres.</div>';
+          return;
+        }
+        payload.sources.forEach(function (source) { cards.appendChild(sourceCard(source)); });
+      } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; }
+    }
+
+    tokenInput.addEventListener('input', function () { localStorage.setItem('relaypress.adminToken', tokenInput.value.trim()); updateTokenHint(); });
+    providerInput.addEventListener('change', loadSources);
+    statusInput.addEventListener('change', loadSources);
+    orderInput.addEventListener('change', loadSources);
+    refreshButton.addEventListener('click', loadSources);
+    updateTokenHint();
+    loadSources();
+  </script>
+</body>
+</html>`;
+
 const publishersHtml = String.raw`<!doctype html>
 <html lang="fr">
 <head>
@@ -87,7 +227,7 @@ const publishersHtml = String.raw`<!doctype html>
   <main>
     <h1>RelayPress Publishers</h1>
     <div class="subtitle">Comptes de publication connectés. Les valeurs sensibles ne sont jamais affichées.</div>
-    <p><a href="/admin">← Retour aux jobs</a></p>
+    <p><a href="/admin">← Retour aux jobs</a> · <a href="/admin/sources">Sources éditoriales</a></p>
 
     <section class="panel">
       <div class="controls">
@@ -246,6 +386,10 @@ const publishersHtml = String.raw`<!doctype html>
 export async function registerAdminPage(app: FastifyInstance): Promise<void> {
   app.get("/admin", async (_request, reply) => {
     return reply.header("cache-control", "no-store").type("text/html; charset=utf-8").send(adminHtml);
+  });
+
+  app.get("/admin/sources", async (_request, reply) => {
+    return reply.header("cache-control", "no-store").type("text/html; charset=utf-8").send(sourcesHtml);
   });
 
   app.get("/admin/publishers", async (_request, reply) => {
