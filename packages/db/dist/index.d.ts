@@ -1,10 +1,10 @@
-type QueryResult<T extends Record<string, unknown> = Record<string, unknown>> = {
+type QueryResult<T = any> = {
   rows: T[];
   rowCount: number | null;
 };
 
 type InsertResult = {
-  returning<T extends Record<string, unknown>>(selection: T): Promise<Array<{ [K in keyof T]: string }>>;
+  returning<T>(selection: T): Promise<Array<{ [K in keyof T]: string }>>;
 };
 
 type InsertValues = {
@@ -18,12 +18,12 @@ type DbClient = {
 };
 
 type PoolLike = {
-  query<T extends Record<string, unknown> = Record<string, unknown>>(query: string, values?: unknown[]): Promise<QueryResult<T>>;
+  query<T = any>(query: string, values?: unknown[]): Promise<QueryResult<T>>;
   end(): Promise<void>;
 };
 
 type TableWithId = {
-  id: unknown;
+  id: string;
 };
 
 export declare function createPgPool(connectionString?: string): PoolLike;
