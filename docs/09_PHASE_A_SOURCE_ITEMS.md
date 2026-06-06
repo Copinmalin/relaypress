@@ -200,10 +200,16 @@ La première implémentation doit :
 
 ### PR A1 — Schéma SourceItem
 
-- ajouter `source_items` au schéma DB ;
-- ajouter la migration idempotente ;
-- ajouter les types partagés minimaux ;
-- aucune ingestion réelle.
+Statut : ✅ implémenté le 2026-06-06.
+
+Réalisé :
+
+- ajout de `source_items` dans `packages/db/src/schema.ts` ;
+- ajout de la migration idempotente dans `packages/db/src/migrate.ts` ;
+- ajout des types partagés minimaux dans `packages/shared/src/index.ts` ;
+- aucune ingestion réelle ;
+- aucune IA ;
+- aucune publication.
 
 ### PR A2 — Ingestion BTC Breakdown minimale
 
@@ -227,7 +233,49 @@ La première implémentation doit :
 
 ---
 
-## 11. Definition of Done phase A documentaire
+## 11. État technique actuel
+
+La table `source_items` est définie comme stockage minimal pour les sources récupérées.
+
+Elle contient :
+
+```text
+id
+provider
+source_url
+canonical_url
+title
+excerpt
+language
+status
+metadata
+fetched_at
+created_at
+updated_at
+```
+
+Index actifs :
+
+```text
+source_items_provider_idx
+source_items_status_idx
+source_items_fetched_at_idx
+source_items_provider_canonical_url_idx
+```
+
+Le modèle partagé expose :
+
+```text
+SourceItemStatus
+SourceProvider
+SourceItem
+```
+
+Cette étape ne crée pas encore de relation vers `publication_jobs`. Le rattachement opérationnel à une source ou à un signal reste prévu pour une phase dédiée.
+
+---
+
+## 12. Definition of Done phase A documentaire
 
 Cette phase documentaire est correcte si :
 
