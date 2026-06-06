@@ -6,7 +6,7 @@ Il ne contient pas les détails longs d’architecture, de déploiement, de séc
 
 Dernière mise à jour : 2026-06-06
 
-État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. La table `source_items` est introduite comme socle Phase A. Publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. Phase A2 introduit l'ingestion minimale BTC Breakdown vers `source_items`. Publishers réels non activés par défaut.**
 
 ---
 
@@ -70,7 +70,7 @@ Publishers = sorties externes contrôlées
 | Publisher actif par défaut | mock |
 | Publisher LinkedIn réel | préparé, à finaliser en premier |
 | Interface admin | fonctionnelle pour MVP, à étendre aux sources, signaux et campagnes |
-| Sources automatisées | modèle `source_items` introduit, ingestion BTC Breakdown à implémenter |
+| Sources automatisées | ingestion minimale BTC Breakdown implémentée vers `source_items` |
 | Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, à implémenter par PR atomiques |
 | Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
@@ -107,7 +107,7 @@ packages/shared   = types et constantes partagés
 infra/            = configuration d’infrastructure
 ```
 
-Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md` et `docs/09_PHASE_A_SOURCE_ITEMS.md`.
+Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` et `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`.
 
 ---
 
@@ -165,6 +165,7 @@ Ils ne déclenchent aucune publication.
 | `docs/07_AGENT_WORKFLOW.md` | workflow Codex, Copilot et agents IA |
 | `docs/08_SIGNAL_ENGINE.md` | cadrage du Signal Engine : BTC Breakdown, signaux, canaux, contraintes et roadmap |
 | `docs/09_PHASE_A_SOURCE_ITEMS.md` | cadrage Phase A : modèle `SourceItem`, source_items, statuts et garde-fous |
+| `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` | implémentation ingestion minimale BTC Breakdown vers `source_items` |
 | `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | comptes publishers, OAuth admin et chiffrement |
 | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn réel contrôlé |
 
@@ -177,14 +178,14 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-Phase A — Source Items : schéma DB introduit, ingestion BTC Breakdown minimale à implémenter.
+Phase A — Source Items : ingestion BTC Breakdown minimale implémentée, admin sources à implémenter.
 ```
 
 ### Priorités courantes
 
-1. Implémenter la récupération minimale BTC Breakdown sans IA ni publication.
-2. Insérer les contenus récupérés dans `source_items` sans doublon.
-3. Ajouter le bloc admin des sources récupérées.
+1. Ajouter le bloc admin des sources récupérées.
+2. Permettre de filtrer les `source_items` par provider et statut.
+3. Permettre à l'humain de sélectionner, ignorer ou archiver une source.
 4. Introduire la notion de signal éditorial qualifié sans casser `publication_jobs`.
 5. Permettre de créer des jobs depuis une source ou un signal avec sélection des plateformes.
 6. Ajouter la génération IA contrôlée par plateforme.
@@ -195,7 +196,7 @@ Phase A — Source Items : schéma DB introduit, ingestion BTC Breakdown minimal
 
 ```text
 PR A1 — Schéma SourceItem : implémenté
-PR A2 — Ingestion BTC Breakdown minimale
+PR A2 — Ingestion BTC Breakdown minimale : implémenté
 PR A3 — Admin sources récupérées
 PR B — Signal éditorial qualifié et rattachement source
 PR C — Jobs depuis source ou signal avec source_item_id
@@ -222,6 +223,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | 2026-05-25 | LinkedIn réel sera finalisé avant Nostr, Blog, Facebook et Instagram. |
 | 2026-06-05 | Signal Engine validé comme cadrage produit : BTC Breakdown comme radar initial, Telegram hors scope diffusion, canaux cibles Blog/Nostr/LinkedIn/X/Facebook/Instagram. |
 | 2026-06-06 | Phase A1 implémentée : table `source_items`, migration idempotente et types partagés `SourceItem`. Aucune ingestion réelle, IA ou publication ajoutée. |
+| 2026-06-06 | Phase A2 implémentée : ingestion minimale BTC Breakdown vers `source_items`, sans IA, campagne, job de publication ni Telegram. |
 
 ---
 
@@ -232,8 +234,8 @@ PR F — Finaliser LinkedIn réel contrôlé
 | Publication réelle accidentelle | contrôlé par défaut mock | `docs/03_SECURITY_MODEL.md` |
 | Exposition de secret OAuth ou admin | à surveiller | `docs/03_SECURITY_MODEL.md` |
 | Génération IA publiée sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
-| Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
-| Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
+| Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` |
+| Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` |
 | Telegram transformé en dépendance technique | hors scope diffusion et ingestion automatique initiale | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
 | Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
 | CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
@@ -259,5 +261,5 @@ PR F — Finaliser LinkedIn réel contrôlé
 ## 11. Prochaine action recommandée
 
 ```text
-Implémenter PR A2 : ingestion BTC Breakdown minimale vers `source_items`, sans IA, sans campagne, sans publication et sans intégration Telegram.
+Implémenter PR A3 : vue admin des `source_items`, avec filtres provider/statut et actions selected/ignored/archived, sans création automatique de publication.
 ```
