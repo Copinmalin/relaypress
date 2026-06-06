@@ -6,7 +6,7 @@ Il ne contient pas les détails longs d’architecture, de déploiement, de séc
 
 Dernière mise à jour : 2026-06-06
 
-État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. Phase A3 ajoute l'admin des sources récupérées. Publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. PR B introduit les `editorial_signals` rattachés aux `source_items`. Publishers réels non activés par défaut.**
 
 ---
 
@@ -59,6 +59,7 @@ Publishers = sorties externes contrôlées
 |---|---|
 | Dépôt | `Copinmalin/relaypress` |
 | Branche principale | `main` |
+| Branche PR en cours | `pr-b-editorial-signals` |
 | Runtime | Node 24 |
 | Monorepo | pnpm |
 | Staging | déployé |
@@ -71,6 +72,7 @@ Publishers = sorties externes contrôlées
 | Publisher LinkedIn réel | préparé, à finaliser en premier |
 | Interface admin | fonctionnelle pour jobs, publishers et sources récupérées |
 | Sources automatisées | ingestion minimale BTC Breakdown + admin `source_items` implémentés |
+| Signaux éditoriaux | modèle DB, types partagés et routes API introduits en branche PR |
 | Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, à implémenter par PR atomiques |
 | Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
@@ -85,8 +87,7 @@ Publishers = sorties externes contrôlées
 Source éditoriale récupérée ou brouillon manuel
 → SourceItem stocké si source récupérée
 → sélection humaine dans l'admin sources
-→ Signal Engine
-→ signal éditorial qualifié
+→ EditorialSignal qualifié
 → campagne éditoriale
 → publication_jobs par plateforme
 → adapted_content généré par IA ou édité humainement
@@ -107,7 +108,7 @@ packages/shared   = types et constantes partagés
 infra/            = configuration d’infrastructure
 ```
 
-Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` et `docs/11_PHASE_A3_ADMIN_SOURCES.md`.
+Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`, `docs/11_PHASE_A3_ADMIN_SOURCES.md` et `docs/12_PR_B_EDITORIAL_SIGNALS.md`.
 
 ---
 
@@ -131,8 +132,6 @@ Transitions sensibles :
 - `archive` interdit depuis `publishing` ;
 - aucun job déjà publié ne doit repasser en publication.
 
-Les statuts conceptuels du futur `EditorialSignal` sont décrits dans `docs/08_SIGNAL_ENGINE.md`. Ils ne remplacent pas les statuts opérationnels actuels de `publication_jobs` tant qu’une migration dédiée n’a pas été validée.
-
 Les statuts de `SourceItem` introduits en Phase A sont :
 
 ```text
@@ -144,6 +143,18 @@ failed
 ```
 
 Ils ne déclenchent aucune publication. L'admin Phase A3 permet uniquement les transitions humaines vers `selected`, `ignored` ou `archived`.
+
+Les statuts de `EditorialSignal` introduits en PR B sont :
+
+```text
+qualified
+needs_sources
+ready_for_campaign
+ignored
+archived
+```
+
+Ils ne déclenchent aucune campagne ni publication automatique.
 
 ---
 
@@ -167,6 +178,7 @@ Ils ne déclenchent aucune publication. L'admin Phase A3 permet uniquement les t
 | `docs/09_PHASE_A_SOURCE_ITEMS.md` | cadrage Phase A : modèle `SourceItem`, source_items, statuts et garde-fous |
 | `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` | implémentation ingestion minimale BTC Breakdown vers `source_items` |
 | `docs/11_PHASE_A3_ADMIN_SOURCES.md` | implémentation admin des sources récupérées |
+| `docs/12_PR_B_EDITORIAL_SIGNALS.md` | implémentation `EditorialSignal` et rattachement `source_items` |
 | `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | comptes publishers, OAuth admin et chiffrement |
 | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn réel contrôlé |
 
@@ -179,17 +191,18 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-Phase A — Source Items : schéma, ingestion BTC Breakdown minimale et admin sources implémentés.
+PR B — Editorial Signals : modèle DB, types partagés et routes API introduits en branche `pr-b-editorial-signals`.
 ```
 
 ### Priorités courantes
 
-1. Préparer le passage d'un `SourceItem` sélectionné vers un futur `EditorialSignal`.
-2. Introduire la notion de signal éditorial qualifié sans casser `publication_jobs`.
-3. Permettre de créer des jobs depuis une source ou un signal avec sélection des plateformes.
-4. Ajouter la génération IA contrôlée par plateforme.
-5. Ajouter la vue admin groupée par source / signal / campagne.
-6. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
+1. Ouvrir une Pull Request depuis `pr-b-editorial-signals` vers `main`.
+2. Laisser tourner le check obligatoire `RelayPress checks`.
+3. Corriger les éventuels retours CI.
+4. Après merge, préparer PR C : création explicite de jobs depuis source ou signal avec sélection des plateformes.
+5. Ajouter la génération IA contrôlée par plateforme.
+6. Ajouter la vue admin groupée par source / signal / campagne.
+7. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
 
 ### Backlog immédiat cible
 
@@ -197,7 +210,7 @@ Phase A — Source Items : schéma, ingestion BTC Breakdown minimale et admin so
 PR A1 — Schéma SourceItem : implémenté
 PR A2 — Ingestion BTC Breakdown minimale : implémenté
 PR A3 — Admin sources récupérées : implémenté
-PR B — Signal éditorial qualifié et rattachement source
+PR B — Signal éditorial qualifié et rattachement source : en branche PR
 PR C — Jobs depuis source ou signal avec source_item_id
 PR D — Génération IA contrôlée
 PR E — Vue admin groupée par source / signal / campagne
@@ -224,6 +237,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | 2026-06-06 | Phase A1 implémentée : table `source_items`, migration idempotente et types partagés `SourceItem`. Aucune ingestion réelle, IA ou publication ajoutée. |
 | 2026-06-06 | Phase A2 implémentée : ingestion minimale BTC Breakdown vers `source_items`, sans IA, campagne, job de publication ni Telegram. |
 | 2026-06-06 | Phase A3 implémentée : API et page admin `/admin/sources` pour afficher, filtrer, sélectionner, ignorer ou archiver les `source_items`, sans création de publication. |
+| 2026-06-06 | PR B ouverte en branche : `editorial_signals` rattachés aux `source_items`, sans IA, campagne ni publication automatique. |
 
 ---
 
@@ -236,6 +250,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | Génération IA publiée sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
 | Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`, `docs/11_PHASE_A3_ADMIN_SOURCES.md` |
 | Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` |
+| Signal transformé en publication automatique | explicitement hors scope PR B | `docs/12_PR_B_EDITORIAL_SIGNALS.md` |
 | Telegram transformé en dépendance technique | hors scope diffusion et ingestion automatique initiale | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
 | Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
 | CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
@@ -261,5 +276,5 @@ PR F — Finaliser LinkedIn réel contrôlé
 ## 11. Prochaine action recommandée
 
 ```text
-Implémenter PR B : modèle de signal éditorial qualifié rattaché à `source_items`, sans génération IA automatique ni création automatique de publication.
+Ouvrir une Pull Request `pr-b-editorial-signals` → `main`, puis laisser tourner `RelayPress checks` avant merge.
 ```
