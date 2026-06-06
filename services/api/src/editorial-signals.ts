@@ -5,58 +5,11 @@ import { pool } from "./db.js";
 
 type EditorialSignalStatus = "qualified" | "needs_sources" | "ready_for_campaign" | "ignored" | "archived";
 type EditorialSignalRiskLevel = "low" | "medium" | "high";
-type SortOrder = "asc" | "desc";
 
-type EditorialSignalsQuery = {
-  sourceItemId?: string;
-  category?: string;
-  status?: EditorialSignalStatus;
-  riskLevel?: EditorialSignalRiskLevel;
-  limit?: string;
-  order?: SortOrder;
-};
+const statuses = new Set<EditorialSignalStatus>(["qualified", "needs_sources", "ready_for_campaign", "ignored", "archived"]);
+const riskLevels = new Set<EditorialSignalRiskLevel>(["low", "medium", "high"]);
 
-type EditorialSignalParams = {
-  id: string;
-};
-
-type SourceItemSignalParams = {
-  id: string;
-};
-
-type CreateEditorialSignalBody = {
-  category?: string;
-  summaryInternal?: string;
-  editorialAngle?: string;
-  riskLevel?: EditorialSignalRiskLevel;
-  primarySources?: string[];
-  status?: EditorialSignalStatus;
-};
-
-type ValidatedCreateEditorialSignalBody = {
-  category: string;
-  summaryInternal: string;
-  editorialAngle: string;
-  riskLevel: EditorialSignalRiskLevel;
-  primarySources: string[];
-  status: EditorialSignalStatus;
-};
-
-type UpdateEditorialSignalStatusBody = {
-  status?: EditorialSignalStatus;
-};
-
-const EDITORIAL_SIGNAL_STATUSES = new Set<EditorialSignalStatus>([
-  "qualified",
-  "needs_sources",
-  "ready_for_campaign",
-  "ignored",
-  "archived",
-]);
-
-const EDITORIAL_SIGNAL_RISK_LEVELS = new Set<EditorialSignalRiskLevel>(["low", "medium", "high"]);
-
-const EDITORIAL_SIGNAL_SELECT = `
+const selectSignal = `
   select
     s.id,
     s.source_item_id,
@@ -81,269 +34,161 @@ const EDITORIAL_SIGNAL_SELECT = `
   join source_items i on i.id = s.source_item_id
 `;
 
-function parseLimit(value: string | undefined): number {
-  const parsed = Number(value ?? 50);
-  if (!Number.isFinite(parsed)) return 50;
-
-  return Math.min(Math.max(Math.trunc(parsed), 1), 200);
+function str(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function parseOrder(value: string | undefined): SortOrder {
+function isStatus(value: unknown): value is EditorialSignalStatus {
+  return typeof value === "string" && statuses.has(value as EditorialSignalStatus);
+}
+
+function isRisk(value: unknown): value is EditorialSignalRiskLevel {
+  return typeof value === "string" && riskLevels.has(value as EditorialSignalRiskLevel);
+}
+
+function limit(value: unknown): number {
+  const parsed = Number(value ?? 50);
+  return Number.isFinite(parsed) ? Math.min(Math.max(Math.trunc(parsed), 1), 200) : 50;
+}
+
+function order(value: unknown): "asc" | "desc" {
   return value === "asc" ? "asc" : "desc";
 }
 
-function isEditorialSignalStatus(value: string | undefined): value is EditorialSignalStatus {
-  return Boolean(value && EDITORIAL_SIGNAL_STATUSES.has(value as EditorialSignalStatus));
+function sources(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.map(str).filter((item): item is string => Boolean(item)))];
 }
 
-function isEditorialSignalRiskLevel(value: string | undefined): value is EditorialSignalRiskLevel {
-  return Boolean(value && EDITORIAL_SIGNAL_RISK_LEVELS.has(value as EditorialSignalRiskLevel));
-}
-
-function normalizePrimarySources(value: string[] | undefined): string[] {
-  return [...new Set((value ?? []).map((source) => source.trim()).filter(Boolean))];
-}
-
-function rowToEditorialSignal(row: Record<string, unknown>) {
+function row(rowData: Record<string, unknown>) {
   return {
-    id: row.id,
-    sourceItemId: row.source_item_id,
-    category: row.category,
-    summaryInternal: row.summary_internal,
-    editorialAngle: row.editorial_angle,
-    riskLevel: row.risk_level,
-    status: row.status,
-    primarySources: row.primary_sources,
-    metadata: row.metadata,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    id: rowData.id,
+    sourceItemId: rowData.source_item_id,
+    category: rowData.category,
+    summaryInternal: rowData.summary_internal,
+    editorialAngle: rowData.editorial_angle,
+    riskLevel: rowData.risk_level,
+    status: rowData.status,
+    primarySources: rowData.primary_sources,
+    metadata: rowData.metadata,
+    createdAt: rowData.created_at,
+    updatedAt: rowData.updated_at,
     sourceItem: {
-      id: row.source_item_id,
-      provider: row.source_provider,
-      sourceUrl: row.source_url,
-      canonicalUrl: row.canonical_url,
-      title: row.source_title,
-      excerpt: row.source_excerpt,
-      language: row.source_language,
-      status: row.source_status,
-      fetchedAt: row.source_fetched_at,
+      id: rowData.source_item_id,
+      provider: rowData.source_provider,
+      sourceUrl: rowData.source_url,
+      canonicalUrl: rowData.canonical_url,
+      title: rowData.source_title,
+      excerpt: rowData.source_excerpt,
+      language: rowData.source_language,
+      status: rowData.source_status,
+      fetchedAt: rowData.source_fetched_at,
     },
   };
 }
 
-async function findEditorialSignalById(id: string) {
-  const result = await pool.query(
-    `
-      ${EDITORIAL_SIGNAL_SELECT}
-      where s.id = $1
-      limit 1
-    `,
-    [id],
-  );
-
-  return result.rows[0] ? rowToEditorialSignal(result.rows[0]) : null;
+async function findSignal(id: string) {
+  const result = await pool.query(`${selectSignal} where s.id = $1 limit 1`, [id]);
+  return result.rows[0] ? row(result.rows[0]) : null;
 }
 
 async function sourceItemExists(id: string): Promise<boolean> {
-  const result = await pool.query(
-    `
-      select id
-      from source_items
-      where id = $1
-      limit 1
-    `,
-    [id],
-  );
-
+  const result = await pool.query("select id from source_items where id = $1 limit 1", [id]);
   return (result.rowCount ?? 0) > 0;
 }
 
-async function createEditorialSignal(sourceItemId: string, body: ValidatedCreateEditorialSignalBody) {
-  const id = randomUUID();
+function parseBody(value: unknown) {
+  if (!value || typeof value !== "object") return "Request body is required";
 
-  await pool.query(
-    `
-      insert into editorial_signals (
-        id,
-        source_item_id,
-        category,
-        summary_internal,
-        editorial_angle,
-        risk_level,
-        status,
-        primary_sources,
-        metadata,
-        created_at,
-        updated_at
-      ) values ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())
-    `,
-    [
-      id,
-      sourceItemId,
-      body.category,
-      body.summaryInternal,
-      body.editorialAngle,
-      body.riskLevel,
-      body.status,
-      JSON.stringify(body.primarySources),
-    ],
-  );
-
-  return findEditorialSignalById(id);
-}
-
-async function updateEditorialSignalStatus(id: string, status: EditorialSignalStatus) {
-  const result = await pool.query(
-    `
-      update editorial_signals
-      set
-        status = $2,
-        updated_at = now()
-      where id = $1
-      returning id
-    `,
-    [id, status],
-  );
-
-  if (result.rowCount === 0) return null;
-  return findEditorialSignalById(id);
-}
-
-function parseCreateBody(body: CreateEditorialSignalBody | undefined): ValidatedCreateEditorialSignalBody | string {
-  const category = body?.category?.trim();
-  const summaryInternal = body?.summaryInternal?.trim();
-  const editorialAngle = body?.editorialAngle?.trim();
-  const status = body?.status ?? "qualified";
-  const riskLevel = body?.riskLevel ?? "medium";
+  const body = value as Record<string, unknown>;
+  const category = str(body.category);
+  const summaryInternal = str(body.summaryInternal);
+  const editorialAngle = str(body.editorialAngle);
+  const status = body.status ?? "qualified";
+  const riskLevel = body.riskLevel ?? "medium";
 
   if (!category) return "Category is required";
   if (!summaryInternal) return "Internal summary is required";
   if (!editorialAngle) return "Editorial angle is required";
-  if (!isEditorialSignalStatus(status)) return "Unsupported editorial signal status";
-  if (!isEditorialSignalRiskLevel(riskLevel)) return "Unsupported editorial signal risk level";
-  if (body?.primarySources && !Array.isArray(body.primarySources)) return "Primary sources must be an array";
+  if (!isStatus(status)) return "Unsupported editorial signal status";
+  if (!isRisk(riskLevel)) return "Unsupported editorial signal risk level";
+  if (body.primarySources && !Array.isArray(body.primarySources)) return "Primary sources must be an array";
 
-  return {
-    category,
-    summaryInternal,
-    editorialAngle,
-    riskLevel,
-    primarySources: normalizePrimarySources(body?.primarySources),
-    status,
-  };
+  return { category, summaryInternal, editorialAngle, status, riskLevel, primarySources: sources(body.primarySources) };
+}
+
+async function createSignal(sourceItemId: string, body: ReturnType<typeof parseBody>) {
+  if (typeof body === "string") throw new Error(body);
+  const id = randomUUID();
+  await pool.query(
+    `insert into editorial_signals (id, source_item_id, category, summary_internal, editorial_angle, risk_level, status, primary_sources, metadata, created_at, updated_at) values ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::jsonb, now(), now())`,
+    [id, sourceItemId, body.category, body.summaryInternal, body.editorialAngle, body.riskLevel, body.status, JSON.stringify(body.primarySources)],
+  );
+  return findSignal(id);
 }
 
 export async function registerEditorialSignalRoutes(app: FastifyInstance): Promise<void> {
-  app.get<{ Querystring: EditorialSignalsQuery }>(
-    "/editorial-signals",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const limit = parseLimit(request.query.limit);
-      const order = parseOrder(request.query.order);
-      const values: unknown[] = [];
-      const clauses: string[] = [];
+  app.get("/editorial-signals", { preHandler: requireAdminToken }, async (request, reply) => {
+    const query = request.query as Record<string, unknown>;
+    const values: unknown[] = [];
+    const clauses: string[] = [];
+    const sourceItemId = str(query.sourceItemId);
+    const category = str(query.category);
 
-      if (request.query.sourceItemId) {
-        values.push(request.query.sourceItemId.trim());
-        clauses.push(`s.source_item_id = $${values.length}`);
-      }
+    if (sourceItemId) {
+      values.push(sourceItemId);
+      clauses.push(`s.source_item_id = $${values.length}`);
+    }
 
-      if (request.query.category) {
-        values.push(request.query.category.trim());
-        clauses.push(`s.category = $${values.length}`);
-      }
+    if (category) {
+      values.push(category);
+      clauses.push(`s.category = $${values.length}`);
+    }
 
-      if (request.query.status) {
-        if (!isEditorialSignalStatus(request.query.status)) {
-          return reply.code(400).send({ error: "invalid_status", message: "Unsupported editorial signal status" });
-        }
+    if (query.status) {
+      if (!isStatus(query.status)) return reply.code(400).send({ error: "invalid_status", message: "Unsupported editorial signal status" });
+      values.push(query.status);
+      clauses.push(`s.status = $${values.length}`);
+    }
 
-        values.push(request.query.status);
-        clauses.push(`s.status = $${values.length}`);
-      }
+    if (query.riskLevel) {
+      if (!isRisk(query.riskLevel)) return reply.code(400).send({ error: "invalid_risk_level", message: "Unsupported editorial signal risk level" });
+      values.push(query.riskLevel);
+      clauses.push(`s.risk_level = $${values.length}`);
+    }
 
-      if (request.query.riskLevel) {
-        if (!isEditorialSignalRiskLevel(request.query.riskLevel)) {
-          return reply.code(400).send({ error: "invalid_risk_level", message: "Unsupported editorial signal risk level" });
-        }
+    values.push(limit(query.limit));
+    const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
+    const result = await pool.query(`${selectSignal} ${where} order by s.created_at ${order(query.order)} limit $${values.length}`, values);
 
-        values.push(request.query.riskLevel);
-        clauses.push(`s.risk_level = $${values.length}`);
-      }
+    return { count: result.rowCount, signals: result.rows.map(row) };
+  });
 
-      values.push(limit);
+  app.get("/editorial-signals/:id", { preHandler: requireAdminToken }, async (request, reply) => {
+    const id = str((request.params as Record<string, unknown>).id);
+    if (!id) return reply.code(400).send({ error: "invalid_id", message: "Editorial signal id is required" });
+    const signal = await findSignal(id);
+    return signal ? { signal } : reply.code(404).send({ error: "not_found", message: "Editorial signal not found" });
+  });
 
-      const where = clauses.length > 0 ? `where ${clauses.join(" and ")}` : "";
-      const limitPlaceholder = `$${values.length}`;
+  app.post("/source-items/:id/editorial-signals", { preHandler: requireAdminToken }, async (request, reply) => {
+    const sourceItemId = str((request.params as Record<string, unknown>).id);
+    if (!sourceItemId) return reply.code(400).send({ error: "invalid_id", message: "Source item id is required" });
+    const parsed = parseBody(request.body);
+    if (typeof parsed === "string") return reply.code(400).send({ error: "invalid_signal", message: parsed });
+    if (!(await sourceItemExists(sourceItemId))) return reply.code(404).send({ error: "not_found", message: "Source item not found" });
+    const signal = await createSignal(sourceItemId, parsed);
+    return reply.code(201).send({ signal });
+  });
 
-      const result = await pool.query(
-        `
-          ${EDITORIAL_SIGNAL_SELECT}
-          ${where}
-          order by s.created_at ${order}
-          limit ${limitPlaceholder}
-        `,
-        values,
-      );
+  app.post("/editorial-signals/:id/status", { preHandler: requireAdminToken }, async (request, reply) => {
+    const id = str((request.params as Record<string, unknown>).id);
+    const status = (request.body as Record<string, unknown> | undefined)?.status;
+    if (!id) return reply.code(400).send({ error: "invalid_id", message: "Editorial signal id is required" });
+    if (!isStatus(status)) return reply.code(400).send({ error: "invalid_status", message: "Unsupported editorial signal status" });
 
-      return {
-        count: result.rowCount,
-        order,
-        signals: result.rows.map(rowToEditorialSignal),
-      };
-    },
-  );
-
-  app.get<{ Params: EditorialSignalParams }>(
-    "/editorial-signals/:id",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const signal = await findEditorialSignalById(request.params.id);
-
-      if (!signal) {
-        return reply.code(404).send({ error: "not_found", message: "Editorial signal not found" });
-      }
-
-      return { signal };
-    },
-  );
-
-  app.post<{ Params: SourceItemSignalParams; Body: CreateEditorialSignalBody }>(
-    "/source-items/:id/editorial-signals",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const parsedBody = parseCreateBody(request.body);
-      if (typeof parsedBody === "string") {
-        return reply.code(400).send({ error: "invalid_signal", message: parsedBody });
-      }
-
-      if (!(await sourceItemExists(request.params.id))) {
-        return reply.code(404).send({ error: "not_found", message: "Source item not found" });
-      }
-
-      const signal = await createEditorialSignal(request.params.id, parsedBody);
-
-      return reply.code(201).send({ signal });
-    },
-  );
-
-  app.post<{ Params: EditorialSignalParams; Body: UpdateEditorialSignalStatusBody }>(
-    "/editorial-signals/:id/status",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const status = request.body?.status;
-
-      if (!isEditorialSignalStatus(status)) {
-        return reply.code(400).send({ error: "invalid_status", message: "Unsupported editorial signal status" });
-      }
-
-      const signal = await updateEditorialSignalStatus(request.params.id, status);
-
-      if (!signal) {
-        return reply.code(404).send({ error: "not_found", message: "Editorial signal not found" });
-      }
-
-      return { signal };
-    },
-  );
+    const result = await pool.query("update editorial_signals set status = $2, updated_at = now() where id = $1 returning id", [id, status]);
+    if (result.rowCount === 0) return reply.code(404).send({ error: "not_found", message: "Editorial signal not found" });
+    return { signal: await findSignal(id) };
+  });
 }
