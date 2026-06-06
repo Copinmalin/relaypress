@@ -38,6 +38,26 @@ export async function migrate(pool: Pool): Promise<void> {
     create index if not exists source_items_fetched_at_idx on source_items(fetched_at);
     create unique index if not exists source_items_provider_canonical_url_idx on source_items(provider, canonical_url);
 
+    create table if not exists editorial_signals (
+      id varchar(128) primary key,
+      source_item_id varchar(128) not null references source_items(id),
+      category varchar(64) not null,
+      summary_internal text not null,
+      editorial_angle text not null,
+      risk_level varchar(64) not null default 'medium',
+      status varchar(64) not null default 'qualified',
+      primary_sources jsonb not null default '[]'::jsonb,
+      metadata jsonb not null default '{}'::jsonb,
+      created_at timestamptz not null default now(),
+      updated_at timestamptz not null default now()
+    );
+
+    create index if not exists editorial_signals_source_item_idx on editorial_signals(source_item_id);
+    create index if not exists editorial_signals_category_idx on editorial_signals(category);
+    create index if not exists editorial_signals_status_idx on editorial_signals(status);
+    create index if not exists editorial_signals_risk_level_idx on editorial_signals(risk_level);
+    create index if not exists editorial_signals_created_at_idx on editorial_signals(created_at);
+
     create table if not exists publication_jobs (
       id varchar(128) primary key,
       source_event_id varchar(128) references nostr_events(id),
