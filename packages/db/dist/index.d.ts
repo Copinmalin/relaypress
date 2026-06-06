@@ -14,6 +14,7 @@ type DbClient = {
 
 type PoolLike = {
   query(query: string, values?: unknown[]): Promise<unknown>;
+  end(): Promise<void>;
 };
 
 type TableWithId = {
