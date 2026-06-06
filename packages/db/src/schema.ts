@@ -51,7 +51,7 @@ export const editorialSignals = pgTable(
   "editorial_signals",
   {
     id: varchar("id", { length: 128 }).primaryKey(),
-    sourceItemId: varchar("source_item_id", { length: 128 }).notNull().references(() => sourceItems.id),
+    sourceItemId: varchar("source_item_id", { length: 128 }).notNull(),
     category: varchar("category", { length: 64 }).notNull(),
     summaryInternal: text("summary_internal").notNull(),
     editorialAngle: text("editorial_angle").notNull(),
