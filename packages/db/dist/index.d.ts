@@ -1,3 +1,8 @@
+type QueryResult<T extends Record<string, unknown> = Record<string, unknown>> = {
+  rows: T[];
+  rowCount: number | null;
+};
+
 type InsertResult = {
   returning<T extends Record<string, unknown>>(selection: T): Promise<Array<{ [K in keyof T]: string }>>;
 };
@@ -13,7 +18,7 @@ type DbClient = {
 };
 
 type PoolLike = {
-  query(query: string, values?: unknown[]): Promise<unknown>;
+  query<T extends Record<string, unknown> = Record<string, unknown>>(query: string, values?: unknown[]): Promise<QueryResult<T>>;
   end(): Promise<void>;
 };
 
