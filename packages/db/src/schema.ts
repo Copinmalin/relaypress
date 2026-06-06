@@ -20,6 +20,33 @@ export const nostrEvents = pgTable(
   }),
 );
 
+export const sourceItems = pgTable(
+  "source_items",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    provider: varchar("provider", { length: 64 }).notNull(),
+    sourceUrl: text("source_url").notNull(),
+    canonicalUrl: text("canonical_url").notNull(),
+    title: text("title").notNull(),
+    excerpt: text("excerpt"),
+    language: varchar("language", { length: 16 }).notNull().default("en"),
+    status: varchar("status", { length: 64 }).notNull().default("new"),
+    metadata: jsonb("metadata").notNull().$type<Record<string, unknown>>(),
+    fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    providerIdx: index("source_items_provider_idx").on(table.provider),
+    statusIdx: index("source_items_status_idx").on(table.status),
+    fetchedAtIdx: index("source_items_fetched_at_idx").on(table.fetchedAt),
+    providerCanonicalUrlIdx: uniqueIndex("source_items_provider_canonical_url_idx").on(
+      table.provider,
+      table.canonicalUrl,
+    ),
+  }),
+);
+
 export const publicationJobs = pgTable(
   "publication_jobs",
   {
