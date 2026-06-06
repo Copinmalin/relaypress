@@ -2,10 +2,34 @@ import { workerConfig } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { startNostrIndexer } from "./nostr/indexer.js";
 import { processApprovedPublicationJobs } from "./publisher/index.js";
+import { ingestBtcBreakdownSourceItems } from "./sources/btcbreakdown.js";
 
 const appName = "relaypress";
 
+async function ingestSources(): Promise<number> {
+  if (!workerConfig.sourceIngestionEnabled) {
+    return 0;
+  }
+
+  try {
+    return await ingestBtcBreakdownSourceItems();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    console.error(JSON.stringify({
+      service: "relaypress-worker",
+      component: "source-ingestion",
+      status: "failed",
+      error: message,
+      timestamp: new Date().toISOString(),
+    }));
+
+    return 0;
+  }
+}
+
 async function tick() {
+  const ingestedSourceItems = await ingestSources();
   const publishedJobs = await processApprovedPublicationJobs();
 
   console.log(JSON.stringify({
@@ -13,6 +37,7 @@ async function tick() {
     app: appName,
     status: "running",
     publisherMode: workerConfig.publisherMode,
+    ingestedSourceItems,
     publishedJobs,
     timestamp: new Date().toISOString(),
   }));
