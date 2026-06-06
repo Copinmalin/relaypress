@@ -31,6 +31,25 @@ export type PublicationStatus =
   | "expired"
   | "rejected";
 
+export type SourceItemStatus = "new" | "selected" | "ignored" | "archived" | "failed";
+
+export type SourceProvider = "btcbreakdown" | (string & {});
+
+export interface SourceItem {
+  id: string;
+  provider: SourceProvider;
+  sourceUrl: string;
+  canonicalUrl: string;
+  title: string;
+  excerpt?: string;
+  language: string;
+  status: SourceItemStatus;
+  metadata: Record<string, unknown>;
+  fetchedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ApprovalMode = "none" | "required" | "required_for_new_claims";
 
 export interface EditorialScenario {
