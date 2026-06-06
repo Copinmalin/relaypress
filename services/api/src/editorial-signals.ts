@@ -33,6 +33,15 @@ type CreateEditorialSignalBody = {
   status?: EditorialSignalStatus;
 };
 
+type ValidatedCreateEditorialSignalBody = {
+  category: string;
+  summaryInternal: string;
+  editorialAngle: string;
+  riskLevel: EditorialSignalRiskLevel;
+  primarySources: string[];
+  status: EditorialSignalStatus;
+};
+
 type UpdateEditorialSignalStatusBody = {
   status?: EditorialSignalStatus;
 };
@@ -149,11 +158,8 @@ async function sourceItemExists(id: string): Promise<boolean> {
   return (result.rowCount ?? 0) > 0;
 }
 
-async function createEditorialSignal(sourceItemId: string, body: CreateEditorialSignalBody) {
+async function createEditorialSignal(sourceItemId: string, body: ValidatedCreateEditorialSignalBody) {
   const id = randomUUID();
-  const primarySources = normalizePrimarySources(body.primarySources);
-  const status = body.status ?? "qualified";
-  const riskLevel = body.riskLevel ?? "medium";
 
   await pool.query(
     `
@@ -174,12 +180,12 @@ async function createEditorialSignal(sourceItemId: string, body: CreateEditorial
     [
       id,
       sourceItemId,
-      body.category?.trim(),
-      body.summaryInternal?.trim(),
-      body.editorialAngle?.trim(),
-      riskLevel,
-      status,
-      JSON.stringify(primarySources),
+      body.category,
+      body.summaryInternal,
+      body.editorialAngle,
+      body.riskLevel,
+      body.status,
+      JSON.stringify(body.primarySources),
     ],
   );
 
@@ -203,15 +209,28 @@ async function updateEditorialSignalStatus(id: string, status: EditorialSignalSt
   return findEditorialSignalById(id);
 }
 
-function validateCreateBody(body: CreateEditorialSignalBody | undefined): string | null {
-  if (!body?.category?.trim()) return "Category is required";
-  if (!body.summaryInternal?.trim()) return "Internal summary is required";
-  if (!body.editorialAngle?.trim()) return "Editorial angle is required";
-  if (body.status && !isEditorialSignalStatus(body.status)) return "Unsupported editorial signal status";
-  if (body.riskLevel && !isEditorialSignalRiskLevel(body.riskLevel)) return "Unsupported editorial signal risk level";
-  if (body.primarySources && !Array.isArray(body.primarySources)) return "Primary sources must be an array";
+function parseCreateBody(body: CreateEditorialSignalBody | undefined): ValidatedCreateEditorialSignalBody | string {
+  const category = body?.category?.trim();
+  const summaryInternal = body?.summaryInternal?.trim();
+  const editorialAngle = body?.editorialAngle?.trim();
+  const status = body?.status ?? "qualified";
+  const riskLevel = body?.riskLevel ?? "medium";
 
-  return null;
+  if (!category) return "Category is required";
+  if (!summaryInternal) return "Internal summary is required";
+  if (!editorialAngle) return "Editorial angle is required";
+  if (!isEditorialSignalStatus(status)) return "Unsupported editorial signal status";
+  if (!isEditorialSignalRiskLevel(riskLevel)) return "Unsupported editorial signal risk level";
+  if (body?.primarySources && !Array.isArray(body.primarySources)) return "Primary sources must be an array";
+
+  return {
+    category,
+    summaryInternal,
+    editorialAngle,
+    riskLevel,
+    primarySources: normalizePrimarySources(body?.primarySources),
+    status,
+  };
 }
 
 export async function registerEditorialSignalRoutes(app: FastifyInstance): Promise<void> {
@@ -293,16 +312,16 @@ export async function registerEditorialSignalRoutes(app: FastifyInstance): Promi
     "/source-items/:id/editorial-signals",
     { preHandler: requireAdminToken },
     async (request, reply) => {
-      const validationError = validateCreateBody(request.body);
-      if (validationError) {
-        return reply.code(400).send({ error: "invalid_signal", message: validationError });
+      const parsedBody = parseCreateBody(request.body);
+      if (typeof parsedBody === "string") {
+        return reply.code(400).send({ error: "invalid_signal", message: parsedBody });
       }
 
       if (!(await sourceItemExists(request.params.id))) {
         return reply.code(404).send({ error: "not_found", message: "Source item not found" });
       }
 
-      const signal = await createEditorialSignal(request.params.id, request.body);
+      const signal = await createEditorialSignal(request.params.id, parsedBody);
 
       return reply.code(201).send({ signal });
     },
@@ -312,11 +331,13 @@ export async function registerEditorialSignalRoutes(app: FastifyInstance): Promi
     "/editorial-signals/:id/status",
     { preHandler: requireAdminToken },
     async (request, reply) => {
-      if (!isEditorialSignalStatus(request.body?.status)) {
+      const status = request.body?.status;
+
+      if (!isEditorialSignalStatus(status)) {
         return reply.code(400).send({ error: "invalid_status", message: "Unsupported editorial signal status" });
       }
 
-      const signal = await updateEditorialSignalStatus(request.params.id, request.body.status);
+      const signal = await updateEditorialSignalStatus(request.params.id, status);
 
       if (!signal) {
         return reply.code(404).send({ error: "not_found", message: "Editorial signal not found" });
