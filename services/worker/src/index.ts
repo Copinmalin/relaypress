@@ -5,11 +5,19 @@ import { processApprovedPublicationJobs } from "./publisher/index.js";
 import { ingestBtcBreakdownSourceItems } from "./sources/btcbreakdown.js";
 
 const appName = "relaypress";
+let lastSourceIngestionAt = 0;
 
 async function ingestSources(): Promise<number> {
   if (!workerConfig.sourceIngestionEnabled) {
     return 0;
   }
+
+  const now = Date.now();
+  if (now - lastSourceIngestionAt < workerConfig.sourceIngestionIntervalMs) {
+    return 0;
+  }
+
+  lastSourceIngestionAt = now;
 
   try {
     return await ingestBtcBreakdownSourceItems();
