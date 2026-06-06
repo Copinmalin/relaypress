@@ -47,6 +47,30 @@ export const sourceItems = pgTable(
   }),
 );
 
+export const editorialSignals = pgTable(
+  "editorial_signals",
+  {
+    id: varchar("id", { length: 128 }).primaryKey(),
+    sourceItemId: varchar("source_item_id", { length: 128 }).notNull(),
+    category: varchar("category", { length: 64 }).notNull(),
+    summaryInternal: text("summary_internal").notNull(),
+    editorialAngle: text("editorial_angle").notNull(),
+    riskLevel: varchar("risk_level", { length: 64 }).notNull().default("medium"),
+    status: varchar("status", { length: 64 }).notNull().default("qualified"),
+    primarySources: jsonb("primary_sources").notNull().$type<string[]>(),
+    metadata: jsonb("metadata").notNull().$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => ({
+    sourceItemIdx: index("editorial_signals_source_item_idx").on(table.sourceItemId),
+    categoryIdx: index("editorial_signals_category_idx").on(table.category),
+    statusIdx: index("editorial_signals_status_idx").on(table.status),
+    riskLevelIdx: index("editorial_signals_risk_level_idx").on(table.riskLevel),
+    createdAtIdx: index("editorial_signals_created_at_idx").on(table.createdAt),
+  }),
+);
+
 export const publicationJobs = pgTable(
   "publication_jobs",
   {

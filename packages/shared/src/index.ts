@@ -50,6 +50,47 @@ export interface SourceItem {
   updatedAt: string;
 }
 
+export type EditorialSignalStatus =
+  | "qualified"
+  | "needs_sources"
+  | "ready_for_campaign"
+  | "ignored"
+  | "archived";
+
+export type EditorialSignalRiskLevel = "low" | "medium" | "high";
+
+export type EditorialSignalCategory =
+  | "self_custody"
+  | "privacy"
+  | "opsec"
+  | "lightning"
+  | "merchant_adoption"
+  | "institutional_adoption"
+  | "mining_energy"
+  | "regulation"
+  | "monetary_policy"
+  | "open_source"
+  | "education"
+  | "local_bitcoin"
+  | "scam_warning"
+  | "sovereign_tools"
+  | "nostr"
+  | (string & {});
+
+export interface EditorialSignal {
+  id: string;
+  sourceItemId: string;
+  category: EditorialSignalCategory;
+  summaryInternal: string;
+  editorialAngle: string;
+  riskLevel: EditorialSignalRiskLevel;
+  status: EditorialSignalStatus;
+  primarySources: string[];
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type ApprovalMode = "none" | "required" | "required_for_new_claims";
 
 export interface EditorialScenario {
