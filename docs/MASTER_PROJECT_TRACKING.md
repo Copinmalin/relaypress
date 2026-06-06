@@ -6,7 +6,7 @@ Il ne contient pas les détails longs d’architecture, de déploiement, de séc
 
 Dernière mise à jour : 2026-06-06
 
-État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. PR B introduit les `editorial_signals` rattachés aux `source_items`. Publishers réels non activés par défaut.**
+État global : **MVP éditorial souverain fonctionnel en staging, backlog nettoyé, trajectoire produit recentrée sur sources → Signal Engine → campagnes → IA → validation → publication multi-canal. PR B a introduit les `editorial_signals` rattachés aux `source_items`. PR C prépare l’API de qualification humaine source → signal. Publishers réels non activés par défaut.**
 
 ---
 
@@ -59,7 +59,7 @@ Publishers = sorties externes contrôlées
 |---|---|
 | Dépôt | `Copinmalin/relaypress` |
 | Branche principale | `main` |
-| Branche PR en cours | `pr-b-editorial-signals` |
+| Branche PR en cours | `pr-c-source-signal-api` |
 | Runtime | Node 24 |
 | Monorepo | pnpm |
 | Staging | déployé |
@@ -72,7 +72,7 @@ Publishers = sorties externes contrôlées
 | Publisher LinkedIn réel | préparé, à finaliser en premier |
 | Interface admin | fonctionnelle pour jobs, publishers et sources récupérées |
 | Sources automatisées | ingestion minimale BTC Breakdown + admin `source_items` implémentés |
-| Signaux éditoriaux | modèle DB, types partagés et routes API introduits en branche PR |
+| Signaux éditoriaux | modèle DB et types partagés introduits ; API de qualification en PR C |
 | Signal Engine | cadré dans `docs/08_SIGNAL_ENGINE.md`, à implémenter par PR atomiques |
 | Génération IA | à implémenter sous validation humaine |
 | Documentation | rationalisée autour du master synthétique et des docs spécialisées |
@@ -108,7 +108,7 @@ packages/shared   = types et constantes partagés
 infra/            = configuration d’infrastructure
 ```
 
-Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`, `docs/11_PHASE_A3_ADMIN_SOURCES.md` et `docs/12_PR_B_EDITORIAL_SIGNALS.md`.
+Détails : voir `docs/01_ARCHITECTURE.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`, `docs/11_PHASE_A3_ADMIN_SOURCES.md`, `docs/12_PR_B_EDITORIAL_SIGNALS.md` et `docs/13_PR_C_SOURCE_SIGNAL_API.md`.
 
 ---
 
@@ -179,6 +179,7 @@ Ils ne déclenchent aucune campagne ni publication automatique.
 | `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` | implémentation ingestion minimale BTC Breakdown vers `source_items` |
 | `docs/11_PHASE_A3_ADMIN_SOURCES.md` | implémentation admin des sources récupérées |
 | `docs/12_PR_B_EDITORIAL_SIGNALS.md` | implémentation `EditorialSignal` et rattachement `source_items` |
+| `docs/13_PR_C_SOURCE_SIGNAL_API.md` | implémentation API de qualification source sélectionnée → signal éditorial |
 | `docs/PHASE_F_PUBLISHER_ACCOUNTS.md` | comptes publishers, OAuth admin et chiffrement |
 | `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn réel contrôlé |
 
@@ -191,15 +192,15 @@ Règle : le master pointe vers les détails. Les documents spécialisés portent
 ### Phase actuelle
 
 ```text
-PR B — Editorial Signals : modèle DB, types partagés et routes API introduits en branche `pr-b-editorial-signals`.
+PR C — Source Signal API : ajouter une qualification humaine source sélectionnée → EditorialSignal.
 ```
 
 ### Priorités courantes
 
-1. Ouvrir une Pull Request depuis `pr-b-editorial-signals` vers `main`.
+1. Ouvrir une Pull Request depuis `pr-c-source-signal-api` vers `main`.
 2. Laisser tourner le check obligatoire `RelayPress checks`.
 3. Corriger les éventuels retours CI.
-4. Après merge, préparer PR C : création explicite de jobs depuis source ou signal avec sélection des plateformes.
+4. Après merge, préparer la création explicite de jobs depuis source ou signal avec sélection des plateformes.
 5. Ajouter la génération IA contrôlée par plateforme.
 6. Ajouter la vue admin groupée par source / signal / campagne.
 7. Finaliser LinkedIn réel en premier, sous test contrôlé et retour mock obligatoire.
@@ -210,11 +211,12 @@ PR B — Editorial Signals : modèle DB, types partagés et routes API introduit
 PR A1 — Schéma SourceItem : implémenté
 PR A2 — Ingestion BTC Breakdown minimale : implémenté
 PR A3 — Admin sources récupérées : implémenté
-PR B — Signal éditorial qualifié et rattachement source : en branche PR
-PR C — Jobs depuis source ou signal avec source_item_id
-PR D — Génération IA contrôlée
-PR E — Vue admin groupée par source / signal / campagne
-PR F — Finaliser LinkedIn réel contrôlé
+PR B — Signal éditorial qualifié et rattachement source : implémenté
+PR C — API de qualification source sélectionnée → signal : en cours
+PR D — Jobs depuis source ou signal avec source_item_id
+PR E — Génération IA contrôlée
+PR F — Vue admin groupée par source / signal / campagne
+PR G — Finaliser LinkedIn réel contrôlé
 ```
 
 ---
@@ -237,7 +239,8 @@ PR F — Finaliser LinkedIn réel contrôlé
 | 2026-06-06 | Phase A1 implémentée : table `source_items`, migration idempotente et types partagés `SourceItem`. Aucune ingestion réelle, IA ou publication ajoutée. |
 | 2026-06-06 | Phase A2 implémentée : ingestion minimale BTC Breakdown vers `source_items`, sans IA, campagne, job de publication ni Telegram. |
 | 2026-06-06 | Phase A3 implémentée : API et page admin `/admin/sources` pour afficher, filtrer, sélectionner, ignorer ou archiver les `source_items`, sans création de publication. |
-| 2026-06-06 | PR B ouverte en branche : `editorial_signals` rattachés aux `source_items`, sans IA, campagne ni publication automatique. |
+| 2026-06-06 | PR B fusionnée : `editorial_signals` rattachés aux `source_items`, sans IA, campagne ni publication automatique. |
+| 2026-06-06 | PR C lancée : qualification humaine d’une source `selected` en `EditorialSignal`, sans IA ni publication. |
 
 ---
 
@@ -250,7 +253,7 @@ PR F — Finaliser LinkedIn réel contrôlé
 | Génération IA publiée sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
 | Import source trop large ou instable | commencer par BTC Breakdown uniquement | `docs/05_ROADMAP.md`, `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md`, `docs/11_PHASE_A3_ADMIN_SOURCES.md` |
 | Recopie excessive de contenus tiers | BTC Breakdown = radar, analyse originale obligatoire | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md`, `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` |
-| Signal transformé en publication automatique | explicitement hors scope PR B | `docs/12_PR_B_EDITORIAL_SIGNALS.md` |
+| Signal transformé en publication automatique | explicitement hors scope PR B et PR C | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md` |
 | Telegram transformé en dépendance technique | hors scope diffusion et ingestion automatique initiale | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
 | Divergence documentaire | réduit par master synthétique | `docs/DOCUMENTATION_AUDIT.md` |
 | CI ou lockfile incohérent | à vérifier à chaque PR | `docs/06_CI_NOTES.md` |
@@ -276,5 +279,5 @@ PR F — Finaliser LinkedIn réel contrôlé
 ## 11. Prochaine action recommandée
 
 ```text
-Ouvrir une Pull Request `pr-b-editorial-signals` → `main`, puis laisser tourner `RelayPress checks` avant merge.
+Ouvrir une Pull Request `pr-c-source-signal-api` → `main`, puis laisser tourner `RelayPress checks` avant merge.
 ```

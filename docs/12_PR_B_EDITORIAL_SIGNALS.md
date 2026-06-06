@@ -2,7 +2,7 @@
 
 Ce document trace l'implémentation de la phase PR B.
 
-Objectif : créer le modèle `EditorialSignal`, le rattacher à `source_items`, et permettre une qualification humaine minimale d'une source sélectionnée.
+Objectif : créer le modèle `EditorialSignal`, le rattacher à `source_items`, et préparer la qualification humaine future d'une source sélectionnée.
 
 ---
 
@@ -30,13 +30,13 @@ created_at
 updated_at
 ```
 
-Routes API ajoutées :
+Types partagés ajoutés :
 
 ```text
-GET  /editorial-signals
-GET  /editorial-signals/:id
-POST /source-items/:id/editorial-signals
-POST /editorial-signals/:id/status
+EditorialSignal
+EditorialSignalStatus
+EditorialSignalRiskLevel
+EditorialSignalCategory
 ```
 
 ---
@@ -93,11 +93,18 @@ Le niveau de risque sert à forcer une discipline éditoriale plus stricte avant
 - aucune création de `publication_jobs` ;
 - aucune publication réelle ou mock ;
 - rattachement explicite à `source_items` ;
-- actions protégées par `ADMIN_API_TOKEN` ;
 - conservation de la source d'origine via `source_item_id`.
+
+---
+
+## Hors périmètre PR B
+
+Les routes API de qualification ne font pas partie du périmètre fusionné en PR B.
+
+Elles sont traitées dans PR C afin de garder une découpe atomique : modèle d'abord, qualification ensuite.
 
 ---
 
 ## Prochaine étape
 
-PR C : permettre de créer des jobs depuis un signal ou une source, avec sélection explicite des plateformes, toujours sans publication automatique.
+PR C : permettre de qualifier une source `selected` en `EditorialSignal`, sans IA, sans campagne et sans publication automatique.
