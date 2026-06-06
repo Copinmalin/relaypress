@@ -10,8 +10,10 @@ La CI exécute :
 
 ```bash
 pnpm install --frozen-lockfile
+pnpm lint
 pnpm typecheck
 pnpm build
+pnpm check
 cp .env.example .env
 docker compose config
 docker compose build api worker
@@ -25,6 +27,7 @@ docker compose build api worker
 - La version Node cible est `24`.
 - Les workflows GitHub Actions forcent l’usage Node 24 pour les actions JavaScript.
 - `.env.example` doit rester suffisant pour valider `docker compose config`.
+- Toute PR doit passer `pnpm lint`, `pnpm typecheck`, `pnpm build` et `pnpm check` avant merge.
 
 ## Workflow lockfile
 
