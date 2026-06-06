@@ -25,6 +25,7 @@ export const workerConfig = {
   publisherBatchSize: Number(process.env.PUBLISHER_BATCH_SIZE ?? 10),
   sourceIngestionEnabled: readBooleanEnv("SOURCE_INGESTION_ENABLED", true),
   sourceIngestionBatchSize: Number(process.env.SOURCE_INGESTION_BATCH_SIZE ?? 10),
+  sourceIngestionIntervalMs: Number(process.env.SOURCE_INGESTION_INTERVAL_MS ?? 43_200_000),
   btcbreakdownBaseUrl: normalizeBaseUrl(process.env.BTCBREAKDOWN_BASE_URL ?? "https://www.btcbreakdown.com"),
   linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
   linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
