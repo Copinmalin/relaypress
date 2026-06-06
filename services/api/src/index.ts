@@ -3,6 +3,7 @@ import cors from "@fastify/cors";
 import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
+import { registerEditorialSignalRoutes } from "./editorial-signals.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
 import { registerSourceItemRoutes } from "./source-items.js";
@@ -16,6 +17,7 @@ await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
 await registerPublisherAccountRoutes(app);
 await registerSourceItemRoutes(app);
+await registerEditorialSignalRoutes(app);
 await registerAdminAssets(app);
 await registerAdminPage(app);
 
