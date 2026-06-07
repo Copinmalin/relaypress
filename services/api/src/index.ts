@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
+import { registerAdminSignalsPage } from "./admin-signals-page.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
@@ -18,6 +19,7 @@ await registerPublisherAccountRoutes(app);
 await registerSourceItemRoutes(app);
 await registerAdminAssets(app);
 await registerAdminPage(app);
+await registerAdminSignalsPage(app);
 
 app.get("/health", async () => ({
   status: "ok",
