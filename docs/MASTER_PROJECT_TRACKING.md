@@ -4,7 +4,7 @@ Ce document est la source de verite operationnelle synthetique du projet RelayPr
 
 Derniere mise a jour : 2026-06-07
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> IA controlee -> validation -> publication multi-canal. PR F ajoute l action admin permettant de preparer des publication_jobs depuis un EditorialSignal ready_for_campaign, sans IA et sans publication automatique.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> IA controlee -> validation -> publication multi-canal. PR G ajoute une vue admin groupee source / signaux / jobs, en lecture seule, sans IA, sans publication et sans modification du worker.
 
 ---
 
@@ -53,16 +53,17 @@ Publishers = sorties externes controlees
 |---|---|
 | Depot | `Copinmalin/relaypress` |
 | Branche principale | `main` |
-| Branche PR en cours | `pr-f-admin-create-jobs-from-signal` |
+| Branche PR en cours | `pr-g-source-jobs-view-actual` |
 | Runtime | Node 24 |
 | Monorepo | pnpm |
 | API | Fastify |
 | Base metier | PostgreSQL |
 | Publisher actif par defaut | mock |
-| Interface admin | jobs, publishers, sources recuperees, signaux editoriaux, preparation jobs depuis signal en PR F |
+| Interface admin | jobs, publishers, sources, signaux, preparation jobs depuis signal, vue groupee en PR G |
 | Sources automatisees | ingestion minimale BTC Breakdown + admin `source_items` implementes |
 | Signaux editoriaux | modele DB, qualification API et admin de tri implementes |
-| Jobs depuis signaux | endpoint implemente, action admin en PR F |
+| Jobs depuis signaux | endpoint et action admin implementes |
+| Vue groupee | en PR G, lecture source / signaux / jobs |
 | Generation IA | a implementer sous validation humaine |
 
 ---
@@ -76,6 +77,7 @@ Source editoriale recuperee ou brouillon manuel
 -> EditorialSignal qualifie
 -> tri humain du signal dans l admin
 -> preparation explicite de publication_jobs par plateforme dans l admin
+-> vue groupee source / signaux / jobs
 -> generation IA future ou edition humaine
 -> validation humaine
 -> worker
@@ -149,6 +151,7 @@ Cette action ne declenche aucune IA, aucun passage en `approved` et aucune publi
 | `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md` | admin des signaux editoriaux |
 | `docs/15_PR_E_JOBS_FROM_SIGNAL.md` | creation explicite de jobs depuis signaux prets |
 | `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md` | action admin pour preparer les jobs depuis un signal pret |
+| `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md` | vue groupee source / signal / jobs |
 | `docs/03_SECURITY_MODEL.md` | securite, secrets, OAuth, logs, publication reelle |
 | `docs/06_CI_NOTES.md` | CI, Node, pnpm, lockfile, Docker checks |
 
@@ -157,7 +160,7 @@ Cette action ne declenche aucune IA, aucun passage en `approved` et aucune publi
 ## 7. Phase actuelle et prochaines priorites
 
 ```text
-PR F - Action admin pour preparer des jobs depuis un signal ready_for_campaign.
+PR G - Vue groupee source / signal / jobs, lecture seule.
 ```
 
 Backlog immediat :
@@ -170,9 +173,9 @@ PR B - Signal editorial qualifie et rattachement source : implemente
 PR C - API de qualification source selectionnee vers signal : implemente
 PR D - Admin signaux editoriaux : implemente
 PR E - Jobs depuis signal avec selection de plateformes : implemente
-PR F - Action admin de preparation des jobs depuis signal : en cours
-PR G - Generation IA controlee
-PR H - Vue admin groupee par source / signal / campagne
+PR F - Action admin de preparation des jobs depuis signal : implemente
+PR G - Vue admin groupee source / signal / jobs : en cours
+PR H - Generation IA controlee
 PR I - Finaliser LinkedIn reel controle
 ```
 
@@ -189,7 +192,8 @@ PR I - Finaliser LinkedIn reel controle
 | 2026-06-06 | PR C fusionnee : qualification humaine d une source `selected` en `EditorialSignal`. |
 | 2026-06-07 | PR D fusionnee : admin des signaux editoriaux. |
 | 2026-06-07 | PR E fusionnee : creation explicite de jobs depuis signal `ready_for_campaign`, avec selection humaine des plateformes. |
-| 2026-06-07 | PR F lancee : action admin pour declencher cette preparation de jobs depuis `/admin/signals`. |
+| 2026-06-07 | PR F fusionnee : action admin pour declencher cette preparation de jobs depuis `/admin/signals`. |
+| 2026-06-07 | PR G lancee : vue groupee source / signal / jobs en lecture seule. |
 
 ---
 
@@ -199,7 +203,7 @@ PR I - Finaliser LinkedIn reel controle
 |---|---|---|
 | Publication reelle accidentelle | controle par defaut mock | `docs/03_SECURITY_MODEL.md` |
 | Generation IA publiee sans validation | interdit par doctrine | `docs/05_ROADMAP.md` |
-| Signal transforme en publication automatique | hors scope PR B a PR F | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md`, `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md`, `docs/15_PR_E_JOBS_FROM_SIGNAL.md`, `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md` |
+| Signal transforme en publication automatique | hors scope PR B a PR G | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md`, `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md`, `docs/15_PR_E_JOBS_FROM_SIGNAL.md`, `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md`, `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md` |
 | Telegram transforme en dependance technique | hors scope initial | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
 | CI ou lockfile incoherent | a verifier a chaque PR | `docs/06_CI_NOTES.md` |
 
@@ -208,5 +212,5 @@ PR I - Finaliser LinkedIn reel controle
 ## 10. Prochaine action recommandee
 
 ```text
-Ouvrir une Pull Request `pr-f-admin-create-jobs-from-signal` vers `main`, puis laisser tourner `RelayPress checks` avant merge.
+Ouvrir une Pull Request `pr-g-source-jobs-view-actual` vers `main`, puis laisser tourner `RelayPress checks` avant merge.
 ```
