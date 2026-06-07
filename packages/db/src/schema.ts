@@ -76,6 +76,8 @@ export const publicationJobs = pgTable(
   {
     id: varchar("id", { length: 128 }).primaryKey(),
     sourceEventId: varchar("source_event_id", { length: 128 }).references(() => nostrEvents.id),
+    sourceItemId: varchar("source_item_id", { length: 128 }),
+    editorialSignalId: varchar("editorial_signal_id", { length: 128 }),
     platform: varchar("platform", { length: 64 }).notNull(),
     status: varchar("status", { length: 64 }).notNull().default("drafted"),
     sourceContent: text("source_content"),
@@ -89,6 +91,8 @@ export const publicationJobs = pgTable(
   },
   (table) => ({
     sourceEventIdx: index("publication_jobs_source_event_idx").on(table.sourceEventId),
+    sourceItemIdx: index("publication_jobs_source_item_idx").on(table.sourceItemId),
+    editorialSignalIdx: index("publication_jobs_editorial_signal_idx").on(table.editorialSignalId),
     platformIdx: index("publication_jobs_platform_idx").on(table.platform),
     statusIdx: index("publication_jobs_status_idx").on(table.status),
   }),

@@ -61,6 +61,8 @@ export async function migrate(pool: Pool): Promise<void> {
     create table if not exists publication_jobs (
       id varchar(128) primary key,
       source_event_id varchar(128) references nostr_events(id),
+      source_item_id varchar(128),
+      editorial_signal_id varchar(128),
       platform varchar(64) not null,
       status varchar(64) not null default 'drafted',
       source_content text,
@@ -74,12 +76,16 @@ export async function migrate(pool: Pool): Promise<void> {
     );
 
     alter table publication_jobs add column if not exists source_content text;
+    alter table publication_jobs add column if not exists source_item_id varchar(128);
+    alter table publication_jobs add column if not exists editorial_signal_id varchar(128);
 
     update publication_jobs
     set source_content = adapted_content
     where source_content is null and adapted_content is not null;
 
     create index if not exists publication_jobs_source_event_idx on publication_jobs(source_event_id);
+    create index if not exists publication_jobs_source_item_idx on publication_jobs(source_item_id);
+    create index if not exists publication_jobs_editorial_signal_idx on publication_jobs(editorial_signal_id);
     create index if not exists publication_jobs_platform_idx on publication_jobs(platform);
     create index if not exists publication_jobs_status_idx on publication_jobs(status);
 
