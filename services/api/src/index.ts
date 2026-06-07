@@ -3,10 +3,12 @@ import cors from "@fastify/cors";
 import { registerAdminAssets } from "./admin-assets.js";
 import { registerAdminPage } from "./admin-page-v2.js";
 import { registerAdminSignalsPage } from "./admin-signals-page.js";
+import { registerAdminSourceGroupsPage } from "./admin-source-groups-page.js";
 import { closeDatabase, migrateDatabase } from "./db.js";
 import { registerPublicationJobRoutes } from "./publication-jobs.js";
 import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
 import { registerSignalPublicationJobRoutes } from "./signal-publication-jobs.js";
+import { registerSourceGroupRoutes } from "./source-groups.js";
 import { registerSourceItemRoutes } from "./source-items.js";
 
 const app = Fastify({ logger: true });
@@ -19,9 +21,11 @@ await registerPublicationJobRoutes(app);
 await registerPublisherAccountRoutes(app);
 await registerSourceItemRoutes(app);
 await registerSignalPublicationJobRoutes(app);
+await registerSourceGroupRoutes(app);
 await registerAdminAssets(app);
 await registerAdminPage(app);
 await registerAdminSignalsPage(app);
+await registerAdminSourceGroupsPage(app);
 
 app.get("/health", async () => ({
   status: "ok",
