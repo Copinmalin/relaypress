@@ -4,7 +4,7 @@ Ce document est la source de verite operationnelle synthetique du projet RelayPr
 
 Derniere mise a jour : 2026-06-07
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. PR I ajoute l action admin pour declencher la generation controlee depuis la page jobs, sans approbation automatique, sans publication et sans modification du worker.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. PR J durcit le passage LinkedIn reel avec un double opt-in runtime, tout en gardant le mode mock comme defaut sur.
 
 ---
 
@@ -43,6 +43,7 @@ Publishers = sorties externes controlees
 - Un job deja publie ne doit jamais etre republie accidentellement.
 - L archivage ne doit jamais supprimer l historique.
 - `PUBLISHER_MODE=mock` reste le defaut sur tant que les publishers reels ne sont pas durcis.
+- LinkedIn reel exige un double opt-in runtime avant usage.
 - Telegram est hors scope comme canal de diffusion RelayPress et ne doit pas devenir une dependance technique prioritaire.
 - BTC Breakdown sert de radar initial, pas de contenu a republier tel quel.
 
@@ -54,18 +55,19 @@ Publishers = sorties externes controlees
 |---|---|
 | Depot | `Copinmalin/relaypress` |
 | Branche principale | `main` |
-| Branche PR en cours | `pr-i-admin-generation-action` |
+| Branche PR en cours | `pr-j-linkedin-real-guardrails` |
 | Runtime | Node 24 |
 | Monorepo | pnpm |
 | API | Fastify |
 | Base metier | PostgreSQL |
 | Publisher actif par defaut | mock |
-| Interface admin | jobs, publishers, sources, signaux, preparation jobs depuis signal, vue groupee, generation controlee en PR I |
+| Interface admin | jobs, publishers, sources, signaux, preparation jobs depuis signal, vue groupee, generation controlee |
 | Sources automatisees | ingestion minimale BTC Breakdown + admin `source_items` implementes |
 | Signaux editoriaux | modele DB, qualification API et admin de tri implementes |
 | Jobs depuis signaux | endpoint et action admin implementes |
 | Vue groupee | implemente, lecture source / signaux / jobs |
-| Generation controlee | endpoint implemente, action admin en PR I |
+| Generation controlee | endpoint et action admin implementes |
+| LinkedIn reel | en PR J, double opt-in runtime avant publisher reel |
 
 ---
 
@@ -82,7 +84,7 @@ Source editoriale recuperee ou brouillon manuel
 -> generation controlee de adapted_content depuis l admin
 -> relecture et validation humaine
 -> worker
--> publisher mock ou reel
+-> publisher mock par defaut ou LinkedIn reel explicitement arme
 -> publication_job_runs
 -> archivage non destructif
 ```
@@ -136,6 +138,8 @@ drafted
 
 Elle ne change pas le statut du job, ne declenche aucun passage en `approved` et ne publie rien.
 
+La publication reelle reste limitee aux jobs explicitement `approved`, puis traites par le worker selon le publisher arme.
+
 ---
 
 ## 6. Sources de verite specialisees
@@ -155,6 +159,7 @@ Elle ne change pas le statut du job, ne declenche aucun passage en `approved` et
 | `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md` | vue groupee source / signal / jobs |
 | `docs/18_PR_H_CONTROLLED_AI_GENERATION.md` | generation controlee de adapted_content sur job existant |
 | `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` | action admin pour declencher la generation controlee |
+| `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn reel controle et rollback mock |
 | `docs/03_SECURITY_MODEL.md` | securite, secrets, OAuth, logs, publication reelle |
 | `docs/06_CI_NOTES.md` | CI, Node, pnpm, lockfile, Docker checks |
 
@@ -163,7 +168,7 @@ Elle ne change pas le statut du job, ne declenche aucun passage en `approved` et
 ## 7. Phase actuelle et prochaines priorites
 
 ```text
-PR I - Action admin pour declencher la generation controlee.
+PR J - Durcir LinkedIn reel avec double opt-in runtime et runbook de test.
 ```
 
 Backlog immediat :
@@ -179,8 +184,8 @@ PR E - Jobs depuis signal avec selection de plateformes : implemente
 PR F - Action admin de preparation des jobs depuis signal : implemente
 PR G - Vue admin groupee source / signal / jobs : implemente
 PR H - Generation IA controlee : implemente
-PR I - Action admin pour declencher la generation controlee : en cours
-PR J - Finaliser LinkedIn reel controle
+PR I - Action admin pour declencher la generation controlee : implemente
+PR J - Finaliser LinkedIn reel controle : en cours
 ```
 
 ---
@@ -199,7 +204,8 @@ PR J - Finaliser LinkedIn reel controle
 | 2026-06-07 | PR F fusionnee : action admin pour declencher cette preparation de jobs depuis `/admin/signals`. |
 | 2026-06-07 | PR G fusionnee : vue groupee source / signal / jobs en lecture seule. |
 | 2026-06-07 | PR H fusionnee : generation controlee de `adapted_content`, sans publication ni validation automatique. |
-| 2026-06-07 | PR I lancee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
+| 2026-06-07 | PR I fusionnee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
+| 2026-06-07 | PR J lancee : LinkedIn reel exige confirmation runtime supplementaire avant publication reelle. |
 
 ---
 
@@ -207,9 +213,9 @@ PR J - Finaliser LinkedIn reel controle
 
 | Risque | Statut | Document de reference |
 |---|---|---|
-| Publication reelle accidentelle | controle par defaut mock | `docs/03_SECURITY_MODEL.md` |
+| Publication reelle accidentelle | controle par defaut mock + double opt-in LinkedIn reel | `docs/03_SECURITY_MODEL.md`, `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
 | Generation IA publiee sans validation | interdit par doctrine | `docs/05_ROADMAP.md`, `docs/18_PR_H_CONTROLLED_AI_GENERATION.md`, `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` |
-| Signal transforme en publication automatique | hors scope PR B a PR I | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md`, `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md`, `docs/15_PR_E_JOBS_FROM_SIGNAL.md`, `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md`, `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md`, `docs/18_PR_H_CONTROLLED_AI_GENERATION.md`, `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` |
+| Signal transforme en publication automatique | hors scope PR B a PR J | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md`, `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md`, `docs/15_PR_E_JOBS_FROM_SIGNAL.md`, `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md`, `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md`, `docs/18_PR_H_CONTROLLED_AI_GENERATION.md`, `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` |
 | Telegram transforme en dependance technique | hors scope initial | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
 | CI ou lockfile incoherent | a verifier a chaque PR | `docs/06_CI_NOTES.md` |
 
@@ -218,5 +224,5 @@ PR J - Finaliser LinkedIn reel controle
 ## 10. Prochaine action recommandee
 
 ```text
-Ouvrir une Pull Request `pr-i-admin-generation-action` vers `main`, puis laisser tourner `RelayPress checks` avant merge.
+Ouvrir une Pull Request `pr-j-linkedin-real-guardrails` vers `main`, puis laisser tourner `RelayPress checks` avant merge.
 ```

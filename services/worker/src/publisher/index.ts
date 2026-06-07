@@ -11,8 +11,14 @@ type PublicationRunResult = {
   externalPostId: string;
 };
 
+const LINKEDIN_REAL_SAFETY_ACK = "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION";
+
 function selectPublisher(): PublicationPublisher {
   if (workerConfig.publisherMode === "linkedin_real") {
+    if (workerConfig.publisherRealSafetyAck !== LINKEDIN_REAL_SAFETY_ACK) {
+      return createMockPublisher();
+    }
+
     return createLinkedInPublisher();
   }
 
