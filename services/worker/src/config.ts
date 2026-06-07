@@ -23,6 +23,7 @@ export const workerConfig = {
   tickIntervalMs: Number(process.env.WORKER_TICK_INTERVAL_MS ?? 30_000),
   publisherMode: process.env.PUBLISHER_MODE ?? "mock",
   publisherBatchSize: Number(process.env.PUBLISHER_BATCH_SIZE ?? 10),
+  publisherRealSafetyAck: process.env.PUBLISHER_REAL_SAFETY_ACK ?? "",
   sourceIngestionEnabled: readBooleanEnv("SOURCE_INGESTION_ENABLED", true),
   sourceIngestionBatchSize: Number(process.env.SOURCE_INGESTION_BATCH_SIZE ?? 10),
   sourceIngestionIntervalMs: Number(process.env.SOURCE_INGESTION_INTERVAL_MS ?? 43_200_000),
