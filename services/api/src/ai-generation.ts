@@ -24,8 +24,14 @@ type JobRow = {
 
 const EDITABLE_STATUSES = new Set(["pending_review", "drafted"]);
 
+function hasOpenAiKey(): boolean {
+  return Boolean(process.env.OPENAI_API_KEY);
+}
+
 function parseMode(value: string | undefined): "mock" | "openai" {
-  if (value === "openai" && process.env.OPENAI_API_KEY) return "openai";
+  if (!hasOpenAiKey()) return "mock";
+  if (value === "openai") return "openai";
+  if (process.env.AI_PROVIDER === "openai") return "openai";
   return "mock";
 }
 
@@ -58,7 +64,7 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-4.1-mini",
+      model: process.env.OPENAI_MODEL ?? "gpt-5.5",
       input: prompt,
       temperature: 0.3,
     }),
