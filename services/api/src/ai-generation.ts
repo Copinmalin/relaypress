@@ -66,7 +66,6 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.5",
       input: prompt,
-      temperature: 0.3,
     }),
   });
 
