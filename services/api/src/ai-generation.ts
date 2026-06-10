@@ -22,6 +22,23 @@ type JobRow = {
   published_at: Date | string | null;
 };
 
+type OpenAiResponsePayload = {
+  id?: string;
+  status?: string;
+  output_text?: string;
+  error?: {
+    message?: string;
+  };
+  incomplete_details?: unknown;
+  output?: Array<{
+    type?: string;
+    content?: Array<{
+      type?: string;
+      text?: string;
+    }>;
+  }>;
+};
+
 const EDITABLE_STATUSES = new Set(["pending_review", "drafted"]);
 
 function hasOpenAiKey(): boolean {
@@ -43,13 +60,31 @@ function buildMockGeneration(sourceContent: string, platform: PublicationTarget,
   return adaptPublicationContent(`${header}${sourceContent}`, platform);
 }
 
+function extractOpenAiText(payload: OpenAiResponsePayload): string {
+  const direct = payload.output_text?.trim();
+  if (direct) return direct;
+
+  return payload.output
+    ?.flatMap((item) => item.content ?? [])
+    .filter((content) => content.type === "output_text" || content.type === "text")
+    .map((content) => content.text?.trim() ?? "")
+    .filter(Boolean)
+    .join("\n\n")
+    .trim() ?? "";
+}
+
 async function generateWithOpenAi(sourceContent: string, platform: PublicationTarget, instruction: string | undefined) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const prompt = [
-    "Tu es RelayPress. Reecris le contenu source pour la plateforme demandee.",
+  const instructions = [
+    "Tu es RelayPress.",
+    "Reecris le contenu source pour la plateforme demandee.",
     "Contraintes absolues: ne publie rien, ne pretend pas avoir publie, garde une tonalite professionnelle, respecte la source.",
+    "Retourne uniquement le texte final adapte.",
+  ].join("\n");
+
+  const inputText = [
     `Plateforme: ${platform}`,
     instruction?.trim() ? `Instruction editoriale: ${instruction.trim()}` : "Instruction editoriale: aucune",
     "",
@@ -65,7 +100,24 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
     },
     body: JSON.stringify({
       model: process.env.OPENAI_MODEL ?? "gpt-5.5",
-      input: prompt,
+      instructions,
+      input: [
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: inputText,
+            },
+          ],
+        },
+      ],
+      text: {
+        format: {
+          type: "text",
+        },
+      },
+      store: false,
     }),
   });
 
@@ -74,9 +126,17 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
     throw new Error(`OpenAI generation failed: ${response.status} ${details.slice(0, 200)}`);
   }
 
-  const payload = await response.json() as { output_text?: string };
-  const generated = payload.output_text?.trim();
-  if (!generated) throw new Error("OpenAI generation returned empty output");
+  const payload = await response.json() as OpenAiResponsePayload;
+  if (payload.error?.message) {
+    throw new Error(`OpenAI generation failed: ${payload.error.message}`);
+  }
+
+  const generated = extractOpenAiText(payload);
+  if (!generated) {
+    throw new Error(
+      `OpenAI generation returned empty output: status=${payload.status ?? "unknown"} id=${payload.id ?? "unknown"}`,
+    );
+  }
 
   return adaptPublicationContent(generated, platform);
 }

@@ -2,9 +2,9 @@
 
 Ce document est la source de verite operationnelle synthetique du projet RelayPress.
 
-Derniere mise a jour : 2026-06-07
+Derniere mise a jour : 2026-06-10
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. PR J durcit le passage LinkedIn reel avec un double opt-in runtime, tout en gardant le mode mock comme defaut sur.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut.
 
 ---
 
@@ -206,6 +206,7 @@ PR J - Finaliser LinkedIn reel controle : en cours
 | 2026-06-07 | PR H fusionnee : generation controlee de `adapted_content`, sans publication ni validation automatique. |
 | 2026-06-07 | PR I fusionnee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
 | 2026-06-07 | PR J lancee : LinkedIn reel exige confirmation runtime supplementaire avant publication reelle. |
+| 2026-06-10 | Correctif generation OpenAI : extraction robuste du texte depuis `output_text` ou `output[].content[]` de la Responses API. |
 
 ---
 
