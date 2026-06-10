@@ -80,7 +80,7 @@ Source editoriale recuperee ou brouillon manuel
 -> EditorialSignal qualifie
 -> tri humain du signal dans l admin
 -> preparation explicite de publication_jobs par plateforme dans l admin
--> vue groupee source / signal / jobs
+-> vue groupee source / signaux / jobs
 -> generation controlee de adapted_content depuis l admin
 -> relecture et validation humaine
 -> worker
