@@ -181,7 +181,7 @@ PR B - Signal editorial qualifie et rattachement source : implemente
 PR C - API de qualification source selectionnee vers signal : implemente
 PR D - Admin signaux editoriaux : implemente
 PR E - Jobs depuis signal avec selection de plateformes : implemente
-PR F - Action admin de preparation des jobs depuis un signal : implemente
+PR F - Action admin de preparation des jobs depuis signal : implemente
 PR G - Vue admin groupee source / signal / jobs : implemente
 PR H - Generation IA controlee : implemente
 PR I - Action admin pour declencher la generation controlee : implemente
