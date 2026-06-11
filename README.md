@@ -64,6 +64,7 @@ Le dépôt contient déjà un MVP éditorial fonctionnel en staging :
 - création de jobs éditoriaux depuis Nostr ou depuis l’interface admin ;
 - conservation de la source et du contenu adapté ;
 - interface admin de validation et d’édition ;
+- génération OpenAI contrôlée sur demande humaine ;
 - publisher mock ;
 - historique d’exécution ;
 - première préparation du publisher LinkedIn réel.
@@ -80,7 +81,7 @@ sources → campagnes → IA → validation → publication multi-canal
 .
 ├── .github/                 # Workflows, templates d’issues et de pull requests
 ├── AGENTS.md                # Règles de travail pour agents IA
-├── docs/                    # Vision, architecture, sécurité, roadmap et suivi projet
+├── docs/                    # Documentation opérationnelle consolidée
 ├── infra/                   # Configuration d’infrastructure
 ├── packages/db/             # Schéma et accès à l’état métier
 ├── packages/shared/         # Types et constantes partagés
@@ -111,6 +112,8 @@ Les règles de contribution agent IA sont dans :
 ```txt
 AGENTS.md
 ```
+
+Le dossier `docs/` ne doit pas contenir une note permanente pour chaque PR. Les changements de doctrine, d’architecture, de sécurité, de statuts métier, d’IA, de publisher ou de déploiement doivent être consolidés dans `docs/MASTER_PROJECT_TRACKING.md`. Les documents séparés doivent rester réservés aux runbooks critiques ou aux références stables.
 
 ## Licence
 
