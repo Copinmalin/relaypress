@@ -2,9 +2,9 @@
 
 Ce document est la source de verite operationnelle principale du projet RelayPress.
 
-Derniere mise a jour : 2026-06-10
+Derniere mise a jour : 2026-06-14
 
-Etat global : MVP editorial souverain fonctionnel en staging. RelayPress orchestre des sources editoriales vers des contenus multi-canaux, avec generation IA controlee, validation humaine, publication mock par defaut et audit. Le dossier `docs/` doit rester une aide operationnelle, pas une archive exhaustive de chaque PR.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
 
 ---
 
@@ -215,42 +215,20 @@ Les anciens fichiers de phase ou de PR ne doivent plus faire autorite une fois l
 - Admin des sources recuperees ajoute.
 - Les sources ne declenchent aucune publication.
 
-### Phase B - Signaux editoriaux
-
-- Modele `EditorialSignal` ajoute.
-- Qualification humaine d une source selectionnee vers signal editorial.
-- Admin des signaux ajoute.
-- Le signal reste une intention editoriale, pas un ordre de publication automatique.
-
-### Phase C - Jobs et preparation multi-plateforme
-
-- Creation explicite de jobs depuis un signal pret.
-- Selection humaine des plateformes.
-- Action admin de preparation de jobs.
-- Vue groupee source / signal / jobs.
-- Aucun job n est publie sans validation.
-
-### Phase D - Generation IA controlee
-
-- Endpoint `/publication-jobs/:id/generate` ajoute.
-- Bouton admin `Generer / reecrire` ajoute.
-- OpenAI activable par environnement.
-- Parsing de sortie Responses API rendu robuste.
-- La generation modifie `adapted_content`, sans validation et sans publication.
-
-### Phase E - Publishers et LinkedIn reel
-
-- Publisher mock operationnel et par defaut.
-- LinkedIn reel prepare avec double opt-in runtime.
-- Runbook de test et rollback mock documente.
-- Aucun publisher reel ne doit etre arme hors fenetre de test controlee.
-
-### Phase F - Qualite, staging et documentation
-
-- CI et checks documentes.
-- Smoke readiness staging documentee.
-- Documentation consolidee autour du Master Project Tracking.
-- Les notes de PR ne doivent plus devenir des documents actifs permanents.
+```text
+PR A1 - Schema SourceItem : implemente
+PR A2 - Ingestion BTC Breakdown minimale : implemente
+PR A3 - Admin sources recuperees : implemente
+PR B - Signal editorial qualifie et rattachement source : implemente
+PR C - API de qualification source selectionnee vers signal : implemente
+PR D - Admin signaux editoriaux : implemente
+PR E - Jobs depuis signal avec selection de plateformes : implemente
+PR F - Action admin de preparation de jobs depuis signal : implemente
+PR G - Vue admin groupee source / signal / jobs : implemente
+PR H - Generation IA controlee : implemente
+PR I - Action admin pour declencher la generation controlee : implemente
+PR J - Finaliser LinkedIn reel controle : en cours
+```
 
 ---
 
@@ -258,12 +236,20 @@ Les anciens fichiers de phase ou de PR ne doivent plus faire autorite une fois l
 
 | Risque | Controle |
 |---|---|
-| Publication reelle accidentelle | `PUBLISHER_MODE=mock` par defaut, double opt-in LinkedIn reel |
-| Generation IA publiee sans validation | generation limitee a `adapted_content`, sans changement de statut |
-| Secret dans le depot ou logs | interdiction explicite, `.env` reel hors depot |
-| Republier un job deja publie | blocage sur `external_post_id` et `published_at` |
-| Confusion mock generation / mock publication | doctrine separee : `AI_PROVIDER` pour generation, `PUBLISHER_MODE` pour diffusion |
-| Documentation contradictoire | Master unique comme source de verite, anciennes docs PR non autoritatives |
+| 2026-05-25 | Trajectoire validee : BTC Breakdown -> selection humaine -> IA -> jobs par plateforme -> validation -> publication controlee. |
+| 2026-06-05 | Signal Engine valide : BTC Breakdown comme radar initial, Telegram hors scope diffusion. |
+| 2026-06-06 | Phase A1/A2/A3 implementees : `source_items`, ingestion BTC Breakdown et admin sources. |
+| 2026-06-06 | PR B fusionnee : modele `editorial_signals`. |
+| 2026-06-06 | PR C fusionnee : qualification humaine d une source `selected` en `EditorialSignal`. |
+| 2026-06-07 | PR D fusionnee : admin des signaux editoriaux. |
+| 2026-06-07 | PR E fusionnee : creation explicite de jobs depuis signal `ready_for_campaign`, avec selection humaine des plateformes. |
+| 2026-06-07 | PR F fusionnee : action admin pour declencher cette preparation de jobs depuis `/admin/signals`. |
+| 2026-06-07 | PR G fusionnee : vue groupee source / signal / jobs en lecture seule. |
+| 2026-06-07 | PR H fusionnee : generation controlee de `adapted_content`, sans publication ni validation automatique. |
+| 2026-06-07 | PR I fusionnee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
+| 2026-06-07 | PR J lancee : LinkedIn reel exige confirmation runtime supplementaire avant publication reelle. |
+| 2026-06-10 | Correctif generation OpenAI : extraction robuste du texte depuis `output_text` ou `output[].content[]` de la Responses API. |
+| 2026-06-14 | Correctif migration DB : serialisation par advisory lock PostgreSQL pour eviter les collisions au demarrage concurrent API / worker. |
 
 ---
 
