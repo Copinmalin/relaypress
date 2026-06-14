@@ -2,9 +2,9 @@
 
 Ce document est la source de verite operationnelle synthetique du projet RelayPress.
 
-Derniere mise a jour : 2026-06-10
+Derniere mise a jour : 2026-06-14
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
 
 ---
 
@@ -181,7 +181,7 @@ PR B - Signal editorial qualifie et rattachement source : implemente
 PR C - API de qualification source selectionnee vers signal : implemente
 PR D - Admin signaux editoriaux : implemente
 PR E - Jobs depuis signal avec selection de plateformes : implemente
-PR F - Action admin de preparation des jobs depuis signal : implemente
+PR F - Action admin de preparation de jobs depuis signal : implemente
 PR G - Vue admin groupee source / signal / jobs : implemente
 PR H - Generation IA controlee : implemente
 PR I - Action admin pour declencher la generation controlee : implemente
@@ -207,6 +207,7 @@ PR J - Finaliser LinkedIn reel controle : en cours
 | 2026-06-07 | PR I fusionnee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
 | 2026-06-07 | PR J lancee : LinkedIn reel exige confirmation runtime supplementaire avant publication reelle. |
 | 2026-06-10 | Correctif generation OpenAI : extraction robuste du texte depuis `output_text` ou `output[].content[]` de la Responses API. |
+| 2026-06-14 | Correctif migration DB : serialisation par advisory lock PostgreSQL pour eviter les collisions au demarrage concurrent API / worker. |
 
 ---
 
