@@ -1,6 +1,6 @@
 # RelayPress - Master Project Tracking
 
-Ce document est la source de verite operationnelle synthetique du projet RelayPress.
+Ce document est la source de verite operationnelle principale du projet RelayPress.
 
 Derniere mise a jour : 2026-06-14
 
@@ -8,90 +8,85 @@ Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire pro
 
 ---
 
-## 1. Resume executif
+## 1. Doctrine centrale
 
-RelayPress est une application d orchestration editoriale souveraine.
+RelayPress n est pas un crossposter automatique.
 
-Le coeur du systeme est la separation nette entre :
+La chaine cible est :
 
 ```text
-SourceItem = source recuperee et auditee
-EditorialSignal = lecture editoriale humaine d une source
-PublicationJob = brouillon operationnel par plateforme, toujours validable humainement
-Generation controlee = reecriture de adapted_content sans validation ni publication automatique
-Nostr = intention signee + journal souverain
-PostgreSQL = etat metier operationnel
-API admin = pilotage humain
-IA = generation et adaptation controlees
-Worker = orchestration publisher et taches asynchrones
-Publishers = sorties externes controlees
+source editoriale
+-> selection humaine
+-> signal editorial
+-> jobs par plateforme
+-> generation IA controlee
+-> relecture et edition humaine
+-> validation explicite
+-> publication mock ou publisher reel explicitement arme
+-> audit des runs
 ```
 
----
+Principes non negociables :
 
-## 2. Principes non negociables
-
-- Nostr reste une racine souveraine des intentions editoriales et du journal de publication.
+- Nostr reste une racine souveraine pour les intentions editoriales et le journal.
 - PostgreSQL porte l etat metier operationnel.
-- Aucun `nsec` ne doit etre stocke en clair.
-- Les tokens OAuth doivent etre chiffres avant tout branchement reel durable.
-- Pas de scraping de reseaux sociaux.
-- Publication externe uniquement via API officielles.
-- L IA propose, l humain valide, le publisher execute.
-- Les contenus sensibles restent soumis a validation humaine.
-- Les actions importantes doivent etre auditables.
-- Un job deja publie ne doit jamais etre republie accidentellement.
-- L archivage ne doit jamais supprimer l historique.
+- L IA propose et reformate ; l humain valide ; le publisher execute.
+- La generation IA ne valide jamais un job.
+- La generation IA ne publie jamais.
+- Un job publie ou rattache a un `external_post_id` ne doit jamais etre regenere ou republie accidentellement.
 - `PUBLISHER_MODE=mock` reste le defaut sur tant que les publishers reels ne sont pas durcis.
 - LinkedIn reel exige un double opt-in runtime avant usage.
-- Telegram est hors scope comme canal de diffusion RelayPress et ne doit pas devenir une dependance technique prioritaire.
+- Aucun secret ne doit etre ajoute au depot.
+- Les actions importantes doivent rester auditables.
+- Telegram est hors scope comme canal de diffusion RelayPress.
 - BTC Breakdown sert de radar initial, pas de contenu a republier tel quel.
 
 ---
 
-## 3. Etat courant du projet
+## 2. Etat courant
 
 | Element | Etat |
 |---|---|
 | Depot | `Copinmalin/relaypress` |
 | Branche principale | `main` |
-| Branche PR en cours | `pr-j-linkedin-real-guardrails` |
-| Runtime | Node 24 |
+| Runtime cible | Node 24 |
 | Monorepo | pnpm |
 | API | Fastify |
 | Base metier | PostgreSQL |
+| Worker | orchestration asynchrone et publishers |
 | Publisher actif par defaut | mock |
-| Interface admin | jobs, publishers, sources, signaux, preparation jobs depuis signal, vue groupee, generation controlee |
-| Sources automatisees | ingestion minimale BTC Breakdown + admin `source_items` implementes |
-| Signaux editoriaux | modele DB, qualification API et admin de tri implementes |
-| Jobs depuis signaux | endpoint et action admin implementes |
-| Vue groupee | implemente, lecture source / signaux / jobs |
-| Generation controlee | endpoint et action admin implementes |
-| LinkedIn reel | en PR J, double opt-in runtime avant publisher reel |
+| Source automatisee initiale | BTC Breakdown |
+| Admin | sources, signaux, jobs, vue groupee, generation IA controlee |
+| IA | OpenAI activable par environnement, fallback mock |
+| Publication reelle | preparee pour LinkedIn, non activee par defaut |
 
 ---
 
-## 4. Architecture logique synthetique cible
+## 3. Architecture logique
 
 ```text
-Source editoriale recuperee ou brouillon manuel
--> SourceItem stocke si source recuperee
--> selection humaine dans l admin sources
--> EditorialSignal qualifie
--> tri humain du signal dans l admin
--> preparation explicite de publication_jobs par plateforme dans l admin
--> vue groupee source / signaux / jobs
--> generation controlee de adapted_content depuis l admin
--> relecture et validation humaine
--> worker
--> publisher mock par defaut ou LinkedIn reel explicitement arme
--> publication_job_runs
--> archivage non destructif
+SourceItem
+  source recuperee, auditee, selectionnable
+
+EditorialSignal
+  lecture humaine d une source ou intention editoriale qualifiee
+
+PublicationJob
+  brouillon operationnel par plateforme, editable, validable humainement
+
+Generation controlee
+  reecrit adapted_content sur demande admin, sans validation ni publication
+
+Worker
+  traite les jobs approuves et execute le publisher configure
+
+Publisher
+  mock par defaut ; reel uniquement si explicitement arme et documente
 ```
 
 ---
 
-## 5. Statuts metier actifs
+## 4. Statuts metier actifs
 
 ### SourceItem
 
@@ -129,49 +124,96 @@ failed
 archived
 ```
 
-La generation controlee est limitee aux jobs :
+Regles essentielles :
 
-```text
-pending_review
-drafted
-```
-
-Elle ne change pas le statut du job, ne declenche aucun passage en `approved` et ne publie rien.
-
-La publication reelle reste limitee aux jobs explicitement `approved`, puis traites par le worker selon le publisher arme.
+- La generation controlee est limitee aux jobs `pending_review` et `drafted`.
+- Elle conserve `source_content`.
+- Elle reecrit uniquement `adapted_content`.
+- Elle ne change pas le statut en `approved`.
+- Elle ne publie rien.
+- La publication reelle reste limitee aux jobs explicitement `approved`, traites par le worker selon le publisher arme.
 
 ---
 
-## 6. Sources de verite specialisees
+## 5. Generation IA controlee
+
+Configuration attendue en environnement, hors depot :
+
+```text
+AI_PROVIDER=openai
+OPENAI_API_KEY=<secret hors depot>
+OPENAI_MODEL=gpt-5.5
+```
+
+Regles :
+
+- Si `AI_PROVIDER=openai` et `OPENAI_API_KEY` sont presents, `/publication-jobs/:id/generate` utilise OpenAI.
+- Si la cle est absente, la generation retombe en mock.
+- `OPENAI_MODEL` pilote le modele utilise.
+- La sortie OpenAI est extraite de maniere robuste depuis `output_text` ou `output[].content[]`.
+- Le parametre `temperature` n est pas envoye, car certains modeles ne le supportent pas.
+- `PUBLISHER_MODE=mock` ne bloque pas la generation IA ; il bloque seulement la diffusion reelle.
+
+Separation critique :
+
+```text
+AI_PROVIDER=openai   = generation / mise en forme editoriale
+PUBLISHER_MODE=mock = aucune diffusion reelle vers les reseaux
+```
+
+---
+
+## 6. Publication et publishers
+
+Etat actuel :
+
+- Le publisher mock reste le comportement par defaut.
+- LinkedIn reel dispose de garde-fous et d un runbook, mais ne doit etre arme que pendant un test controle.
+- Les autres publishers reels restent hors execution tant que leur securite, OAuth, rollback et audit ne sont pas finalises.
+
+Variables sensibles ou critiques :
+
+```text
+ADMIN_API_TOKEN
+TOKEN_ENCRYPTION_KEY
+SESSION_SECRET
+OPENAI_API_KEY
+LINKEDIN_ACCESS_TOKEN
+LINKEDIN_AUTHOR_URN
+LINKEDIN_CLIENT_SECRET
+PUBLISHER_REAL_SAFETY_ACK
+```
+
+Aucune de ces valeurs ne doit etre committee, affichee dans les logs ou partagee dans une PR.
+
+---
+
+## 7. Documents actifs faisant autorite
+
+Le dossier `docs/` doit rester court. Les docs actives sont :
 
 | Document | Role |
 |---|---|
-| `AGENTS.md` | regles de travail pour agents IA dans ce depot |
-| `docs/08_SIGNAL_ENGINE.md` | cadrage du Signal Engine |
-| `docs/09_PHASE_A_SOURCE_ITEMS.md` | modele `SourceItem`, statuts et garde-fous |
-| `docs/10_PHASE_A2_BTCBREAKDOWN_INGESTION.md` | ingestion minimale BTC Breakdown |
-| `docs/11_PHASE_A3_ADMIN_SOURCES.md` | admin des sources recuperees |
-| `docs/12_PR_B_EDITORIAL_SIGNALS.md` | modele `EditorialSignal` |
-| `docs/13_PR_C_SOURCE_SIGNAL_API.md` | API source selectionnee vers signal editorial |
-| `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md` | admin des signaux editoriaux |
-| `docs/15_PR_E_JOBS_FROM_SIGNAL.md` | creation explicite de jobs depuis signaux prets |
-| `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md` | action admin pour preparer les jobs depuis un signal pret |
-| `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md` | vue groupee source / signal / jobs |
-| `docs/18_PR_H_CONTROLLED_AI_GENERATION.md` | generation controlee de adapted_content sur job existant |
-| `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` | action admin pour declencher la generation controlee |
-| `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | test LinkedIn reel controle et rollback mock |
+| `docs/MASTER_PROJECT_TRACKING.md` | source de verite principale, etat courant, doctrine, risques, backlog |
 | `docs/03_SECURITY_MODEL.md` | securite, secrets, OAuth, logs, publication reelle |
-| `docs/06_CI_NOTES.md` | CI, Node, pnpm, lockfile, Docker checks |
+| `docs/04_DEPLOYMENT_CADDY_DOCKER.md` | notes de deploiement Caddy / Docker |
+| `docs/05_ROADMAP.md` | trajectoire produit et priorites |
+| `docs/06_CI_NOTES.md` | CI, Node, pnpm, checks |
+| `docs/08_SIGNAL_ENGINE.md` | cadrage conceptuel du moteur de signaux |
+| `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` | procedure critique de test LinkedIn reel et rollback mock |
+
+Les anciens fichiers de phase ou de PR ne doivent plus faire autorite une fois leur contenu consolide ici. L historique detaille reste dans Git et dans les PR GitHub.
 
 ---
 
-## 7. Phase actuelle et prochaines priorites
+## 8. Historique synthetique des phases
 
-```text
-PR J - Durcir LinkedIn reel avec double opt-in runtime et runbook de test.
-```
+### Phase A - Sources
 
-Backlog immediat :
+- Modele `SourceItem` ajoute.
+- Ingestion minimale BTC Breakdown ajoutee.
+- Admin des sources recuperees ajoute.
+- Les sources ne declenchent aucune publication.
 
 ```text
 PR A1 - Schema SourceItem : implemente
@@ -190,9 +232,9 @@ PR J - Finaliser LinkedIn reel controle : en cours
 
 ---
 
-## 8. Decisions structurantes recentes
+## 9. Risques actifs
 
-| Date | Decision |
+| Risque | Controle |
 |---|---|
 | 2026-05-25 | Trajectoire validee : BTC Breakdown -> selection humaine -> IA -> jobs par plateforme -> validation -> publication controlee. |
 | 2026-06-05 | Signal Engine valide : BTC Breakdown comme radar initial, Telegram hors scope diffusion. |
@@ -211,20 +253,22 @@ PR J - Finaliser LinkedIn reel controle : en cours
 
 ---
 
-## 9. Risques actifs et points de vigilance
+## 10. Regle documentaire
 
-| Risque | Statut | Document de reference |
-|---|---|---|
-| Publication reelle accidentelle | controle par defaut mock + double opt-in LinkedIn reel | `docs/03_SECURITY_MODEL.md`, `docs/LINKEDIN_REAL_TEST_RUNBOOK.md` |
-| Generation IA publiee sans validation | interdit par doctrine | `docs/05_ROADMAP.md`, `docs/18_PR_H_CONTROLLED_AI_GENERATION.md`, `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` |
-| Signal transforme en publication automatique | hors scope PR B a PR J | `docs/12_PR_B_EDITORIAL_SIGNALS.md`, `docs/13_PR_C_SOURCE_SIGNAL_API.md`, `docs/14_PR_D_ADMIN_EDITORIAL_SIGNALS.md`, `docs/15_PR_E_JOBS_FROM_SIGNAL.md`, `docs/16_PR_F_ADMIN_CREATE_JOBS_FROM_SIGNAL.md`, `docs/17_PR_G_SOURCE_SIGNAL_JOBS_VIEW.md`, `docs/18_PR_H_CONTROLLED_AI_GENERATION.md`, `docs/19_PR_I_ADMIN_GENERATION_ACTION.md` |
-| Telegram transforme en dependance technique | hors scope initial | `docs/08_SIGNAL_ENGINE.md`, `docs/09_PHASE_A_SOURCE_ITEMS.md` |
-| CI ou lockfile incoherent | a verifier a chaque PR | `docs/06_CI_NOTES.md` |
+A compter de cette consolidation :
+
+- Ne pas creer un fichier `docs/XX_PR_...` pour chaque PR.
+- Mettre a jour ce Master si une PR change la doctrine, l architecture, les statuts, la securite, le publisher, la generation IA ou le deploiement.
+- Creer un document separe uniquement pour un runbook critique ou une reference stable.
+- Supprimer ou archiver les notes de PR une fois leur contenu consolide.
+- Ne jamais dupliquer une verite operationnelle dans plusieurs fichiers actifs.
 
 ---
 
-## 10. Prochaine action recommandee
+## 11. Backlog court recommande
 
-```text
-Ouvrir une Pull Request `pr-j-linkedin-real-guardrails` vers `main`, puis laisser tourner `RelayPress checks` avant merge.
-```
+1. Terminer la consolidation documentaire et supprimer les notes PR obsoletes.
+2. Relancer un smoke test staging : source -> signal -> jobs -> generation OpenAI -> edition -> validation mock.
+3. Preparer un test LinkedIn reel limite a un seul job, uniquement avec le runbook et rollback prets.
+4. Revoir l ergonomie admin de generation OpenAI : affichage clair du mode utilise et du modele.
+5. Stabiliser la doctrine des campagnes editoriales avant d ajouter de nouveaux publishers reels.

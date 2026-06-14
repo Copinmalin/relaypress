@@ -21,7 +21,7 @@ README.md
 docs/MASTER_PROJECT_TRACKING.md
 ```
 
-Si la tâche touche à l’architecture, à la sécurité, aux statuts métier, au publisher réel ou au déploiement, mettre à jour `docs/MASTER_PROJECT_TRACKING.md` ou signaler explicitement pourquoi aucune mise à jour n’est nécessaire.
+Si la tâche touche à l’architecture, à la sécurité, aux statuts métier, au publisher réel, à l’IA ou au déploiement, mettre à jour `docs/MASTER_PROJECT_TRACKING.md` ou signaler explicitement pourquoi aucune mise à jour n’est nécessaire.
 
 ---
 
@@ -100,7 +100,7 @@ Avant de modifier :
 | Zone | Rôle | Règle |
 |---|---|---|
 | `.github/` | Workflows, templates issue/PR | garder les templates cohérents avec la méthode agent IA |
-| `docs/` | documentation projet et source de vérité | mettre à jour si une décision structurante change |
+| `docs/` | documentation opérationnelle | consolider dans le Master, éviter une note permanente par PR |
 | `infra/` | Caddy, strfry, infrastructure | prudence maximale, documenter les effets de bord |
 | `packages/db/` | schéma et accès PostgreSQL | préserver audit, runs et transitions métier |
 | `packages/shared/` | types et constantes partagés | éviter les breaking changes silencieux |
@@ -165,7 +165,17 @@ Une tâche est terminée seulement si :
 
 ---
 
-## 9. Commandes de vérification recommandées
+## 9. Règle documentaire
+
+- Ne pas créer un nouveau fichier `docs/XX_PR_...` pour chaque PR.
+- Mettre à jour `docs/MASTER_PROJECT_TRACKING.md` pour tout changement de doctrine, architecture, sécurité, statuts métier, IA, publisher ou déploiement.
+- Créer un document séparé uniquement pour un runbook critique ou une référence stable.
+- Supprimer ou archiver les notes de PR une fois leur contenu consolidé.
+- Ne pas dupliquer une vérité opérationnelle dans plusieurs fichiers actifs.
+
+---
+
+## 10. Commandes de vérification recommandées
 
 Selon la tâche :
 
@@ -187,7 +197,7 @@ Ne pas prétendre qu’une commande a été exécutée si elle ne l’a pas ét�
 
 ---
 
-## 10. Priorité absolue
+## 11. Priorité absolue
 
 La priorité est la fiabilité opérationnelle.
 
