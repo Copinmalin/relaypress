@@ -84,6 +84,8 @@ export const publicationJobs = pgTable(
     adaptedContent: text("adapted_content"),
     externalPostId: varchar("external_post_id", { length: 256 }),
     errorMessage: text("error_message"),
+    generationMode: varchar("generation_mode", { length: 64 }),
+    generationModel: varchar("generation_model", { length: 128 }),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
     publishedAt: timestamp("published_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

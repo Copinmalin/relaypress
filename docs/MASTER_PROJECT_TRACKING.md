@@ -236,24 +236,35 @@ PR J - Finaliser LinkedIn reel controle : en cours
 
 | Risque | Controle |
 |---|---|
-| 2026-05-25 | Trajectoire validee : BTC Breakdown -> selection humaine -> IA -> jobs par plateforme -> validation -> publication controlee. |
-| 2026-06-05 | Signal Engine valide : BTC Breakdown comme radar initial, Telegram hors scope diffusion. |
-| 2026-06-06 | Phase A1/A2/A3 implementees : `source_items`, ingestion BTC Breakdown et admin sources. |
-| 2026-06-06 | PR B fusionnee : modele `editorial_signals`. |
-| 2026-06-06 | PR C fusionnee : qualification humaine d une source `selected` en `EditorialSignal`. |
-| 2026-06-07 | PR D fusionnee : admin des signaux editoriaux. |
-| 2026-06-07 | PR E fusionnee : creation explicite de jobs depuis signal `ready_for_campaign`, avec selection humaine des plateformes. |
-| 2026-06-07 | PR F fusionnee : action admin pour declencher cette preparation de jobs depuis `/admin/signals`. |
-| 2026-06-07 | PR G fusionnee : vue groupee source / signal / jobs en lecture seule. |
-| 2026-06-07 | PR H fusionnee : generation controlee de `adapted_content`, sans publication ni validation automatique. |
-| 2026-06-07 | PR I fusionnee : bouton admin de generation / reecriture sur jobs `pending_review` ou `drafted`. |
-| 2026-06-07 | PR J lancee : LinkedIn reel exige confirmation runtime supplementaire avant publication reelle. |
-| 2026-06-10 | Correctif generation OpenAI : extraction robuste du texte depuis `output_text` ou `output[].content[]` de la Responses API. |
-| 2026-06-14 | Correctif migration DB : serialisation par advisory lock PostgreSQL pour eviter les collisions au demarrage concurrent API / worker. |
+| Publication reelle accidentelle | `PUBLISHER_MODE=mock` par defaut, LinkedIn reel sous double opt-in runtime et runbook de rollback. |
+| Generation IA publiee sans validation | `/publication-jobs/:id/generate` limite aux jobs non publies `pending_review` ou `drafted`, sans passage automatique en `approved`. |
+| Republication accidentelle d un job | Le worker ne traite que les jobs `approved` sans `external_post_id` ni `published_at`, puis ecrit un run d audit. |
+| Secrets dans le depot ou les logs | `.env` reel exclu, secrets documentes comme variables hors depot, aucun token OAuth ou `nsec` versionne. |
+| Etat DB incoherent au demarrage | Migrations serialisees par advisory lock PostgreSQL entre API et worker. |
+| Confusion entre warning metier et mode IA | Les warnings metier restent dans `error_message`; le mode et le modele de generation sont exposes separement. |
 
 ---
 
-## 10. Regle documentaire
+## 10. Smoke test staging valide
+
+Le 2026-06-14, le parcours staging suivant a ete valide en mode controle :
+
+```text
+source -> signal -> jobs -> generation OpenAI -> validation humaine LinkedIn -> publication mock -> audit run
+```
+
+Resultats a conserver comme reference :
+
+- generation OpenAI declenchee explicitement depuis l admin ;
+- aucune approbation automatique apres generation ;
+- validation humaine requise avant publication ;
+- publication executee en mock ;
+- run d audit cree ;
+- anti-republication confirme par un second tick worker.
+
+---
+
+## 11. Regle documentaire
 
 A compter de cette consolidation :
 
@@ -265,10 +276,8 @@ A compter de cette consolidation :
 
 ---
 
-## 11. Backlog court recommande
+## 12. Backlog court recommande
 
 1. Terminer la consolidation documentaire et supprimer les notes PR obsoletes.
-2. Relancer un smoke test staging : source -> signal -> jobs -> generation OpenAI -> edition -> validation mock.
-3. Preparer un test LinkedIn reel limite a un seul job, uniquement avec le runbook et rollback prets.
-4. Revoir l ergonomie admin de generation OpenAI : affichage clair du mode utilise et du modele.
-5. Stabiliser la doctrine des campagnes editoriales avant d ajouter de nouveaux publishers reels.
+2. Preparer un test LinkedIn reel limite a un seul job, uniquement avec le runbook et rollback prets.
+3. Stabiliser la doctrine des campagnes editoriales avant d ajouter de nouveaux publishers reels.

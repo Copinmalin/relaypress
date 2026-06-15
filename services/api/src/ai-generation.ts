@@ -12,6 +12,8 @@ type GenerateBody = {
   mode?: "mock" | "openai";
 };
 
+type GenerationMode = "mock" | "openai";
+
 type JobRow = {
   id: string;
   platform: PublicationTarget;
@@ -40,16 +42,21 @@ type OpenAiResponsePayload = {
 };
 
 const EDITABLE_STATUSES = new Set(["pending_review", "drafted"]);
+const DEFAULT_OPENAI_MODEL = "gpt-5.5";
 
 function hasOpenAiKey(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
 
-function parseMode(value: string | undefined): "mock" | "openai" {
+function parseMode(value: string | undefined): GenerationMode {
   if (!hasOpenAiKey()) return "mock";
   if (value === "openai") return "openai";
   if (process.env.AI_PROVIDER === "openai") return "openai";
   return "mock";
+}
+
+function selectedOpenAiModel(): string {
+  return process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL;
 }
 
 function buildMockGeneration(sourceContent: string, platform: PublicationTarget, instruction: string | undefined) {
@@ -99,7 +106,7 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: process.env.OPENAI_MODEL ?? "gpt-5.5",
+      model: selectedOpenAiModel(),
       instructions,
       input: [
         {
@@ -153,6 +160,8 @@ function rowToJob(row: Record<string, unknown>) {
     adaptedContent: row.adapted_content,
     externalPostId: row.external_post_id,
     errorMessage: row.error_message,
+    generationMode: row.generation_mode,
+    generationModel: row.generation_model,
     scheduledAt: row.scheduled_at,
     publishedAt: row.published_at,
     createdAt: row.created_at,
@@ -181,13 +190,21 @@ async function findJob(id: string): Promise<JobRow | null> {
   return result.rows[0] ?? null;
 }
 
-async function updateGeneratedContent(id: string, content: string, errorMessage: string | null) {
+async function updateGeneratedContent(
+  id: string,
+  content: string,
+  errorMessage: string | null,
+  generationMode: GenerationMode,
+  generationModel: string | null,
+) {
   const result = await pool.query(
     `
       update publication_jobs
       set
         adapted_content = $2,
         error_message = $3,
+        generation_mode = $4,
+        generation_model = $5,
         updated_at = now()
       where id = $1
         and status in ('pending_review', 'drafted')
@@ -204,12 +221,14 @@ async function updateGeneratedContent(id: string, content: string, errorMessage:
         adapted_content,
         external_post_id,
         error_message,
+        generation_mode,
+        generation_model,
         scheduled_at,
         published_at,
         created_at,
         updated_at
     `,
-    [id, content, errorMessage],
+    [id, content, errorMessage, generationMode, generationModel],
   );
 
   return result.rows[0] ? rowToJob(result.rows[0]) : null;
@@ -246,12 +265,19 @@ export async function registerAiGenerationRoutes(app: FastifyInstance): Promise<
       }
 
       const mode = parseMode(request.body?.mode);
+      const model = mode === "openai" ? selectedOpenAiModel() : null;
       const adapted = mode === "openai"
         ? await generateWithOpenAi(sourceContent, job.platform, request.body?.instruction) ?? buildMockGeneration(sourceContent, job.platform, request.body?.instruction)
         : buildMockGeneration(sourceContent, job.platform, request.body?.instruction);
 
-      const warnings = [...adapted.warnings, mode === "mock" ? "ai_generation_mock_mode" : "ai_generation_openai_mode"];
-      const updatedJob = await updateGeneratedContent(request.params.id, adapted.content, warnings.length ? warnings.join(",") : null);
+      const warnings = adapted.warnings;
+      const updatedJob = await updateGeneratedContent(
+        request.params.id,
+        adapted.content,
+        warnings.length ? warnings.join(",") : null,
+        mode,
+        model,
+      );
 
       if (!updatedJob) {
         return reply.code(409).send({
@@ -262,6 +288,13 @@ export async function registerAiGenerationRoutes(app: FastifyInstance): Promise<
 
       return {
         mode,
+        model,
+        warnings,
+        generation: {
+          mode,
+          model,
+          warnings,
+        },
         job: updatedJob,
       };
     },

@@ -76,6 +76,8 @@ export async function migrate(pool: Pool): Promise<void> {
         adapted_content text,
         external_post_id varchar(256),
         error_message text,
+        generation_mode varchar(64),
+        generation_model varchar(128),
         scheduled_at timestamptz,
         published_at timestamptz,
         created_at timestamptz not null default now(),
@@ -85,6 +87,8 @@ export async function migrate(pool: Pool): Promise<void> {
       alter table publication_jobs add column if not exists source_content text;
       alter table publication_jobs add column if not exists source_item_id varchar(128);
       alter table publication_jobs add column if not exists editorial_signal_id varchar(128);
+      alter table publication_jobs add column if not exists generation_mode varchar(64);
+      alter table publication_jobs add column if not exists generation_model varchar(128);
 
       update publication_jobs
       set source_content = adapted_content
