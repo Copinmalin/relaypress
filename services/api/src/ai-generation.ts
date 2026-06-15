@@ -22,6 +22,8 @@ type GenerateBody = {
 };
 
 type GenerationMode = "mock" | "openai";
+type OpenAiTextVerbosity = "low" | "medium" | "high";
+type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 type JobRow = {
   id: string;
@@ -42,6 +44,9 @@ type GenerationMetadata = {
   sourceUrl: string | null;
   format: string | null;
   tone: string | null;
+  textVerbosity?: OpenAiTextVerbosity;
+  reasoningEffort?: OpenAiReasoningEffort;
+  maxOutputTokens?: number;
 };
 
 type GeneratedContent = {
@@ -68,6 +73,11 @@ type OpenAiResponsePayload = {
 
 const EDITABLE_STATUSES = new Set(["pending_review", "drafted"]);
 const DEFAULT_OPENAI_MODEL = "gpt-5.5";
+const DEFAULT_OPENAI_TEXT_VERBOSITY: OpenAiTextVerbosity = "high";
+const DEFAULT_OPENAI_REASONING_EFFORT: OpenAiReasoningEffort = "medium";
+const DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 2500;
+const TEXT_VERBOSITY_VALUES = new Set<OpenAiTextVerbosity>(["low", "medium", "high"]);
+const REASONING_EFFORT_VALUES = new Set<OpenAiReasoningEffort>(["none", "minimal", "low", "medium", "high", "xhigh"]);
 
 const GENERATION_JSON_SCHEMA = {
   type: "object",
@@ -131,12 +141,29 @@ function selectedOpenAiModel(): string {
   return process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL;
 }
 
+function selectedTextVerbosity(): OpenAiTextVerbosity {
+  const value = process.env.OPENAI_TEXT_VERBOSITY as OpenAiTextVerbosity | undefined;
+  return value && TEXT_VERBOSITY_VALUES.has(value) ? value : DEFAULT_OPENAI_TEXT_VERBOSITY;
+}
+
+function selectedReasoningEffort(): OpenAiReasoningEffort {
+  const value = process.env.OPENAI_REASONING_EFFORT as OpenAiReasoningEffort | undefined;
+  return value && REASONING_EFFORT_VALUES.has(value) ? value : DEFAULT_OPENAI_REASONING_EFFORT;
+}
+
+function selectedMaxOutputTokens(): number {
+  const value = Number(process.env.OPENAI_MAX_OUTPUT_TOKENS ?? DEFAULT_OPENAI_MAX_OUTPUT_TOKENS);
+  if (!Number.isFinite(value)) return DEFAULT_OPENAI_MAX_OUTPUT_TOKENS;
+  return Math.min(Math.max(Math.round(value), 512), 8000);
+}
+
 function buildGenerationMetadata(
   mode: GenerationMode,
   model: string | null,
   sourceContent: string,
   output: StructuredGenerationOutput | null,
   extraWarnings: string[] = [],
+  controls?: { textVerbosity?: OpenAiTextVerbosity; reasoningEffort?: OpenAiReasoningEffort; maxOutputTokens?: number },
 ): GenerationMetadata {
   return {
     mode,
@@ -147,6 +174,7 @@ function buildGenerationMetadata(
     sourceUrl: output?.sourceUrl ?? extractFirstUrl(sourceContent),
     format: output?.format ?? null,
     tone: output?.tone ?? null,
+    ...controls,
   };
 }
 
@@ -188,6 +216,9 @@ async function generateWithOpenAi(
   if (!apiKey) return null;
 
   const model = selectedOpenAiModel();
+  const textVerbosity = selectedTextVerbosity();
+  const reasoningEffort = selectedReasoningEffort();
+  const maxOutputTokens = selectedMaxOutputTokens();
   const prompt = buildGenerationPrompt({
     platform,
     sourceContent,
@@ -216,7 +247,12 @@ async function generateWithOpenAi(
           ],
         },
       ],
+      reasoning: {
+        effort: reasoningEffort,
+      },
+      max_output_tokens: maxOutputTokens,
       text: {
+        verbosity: textVerbosity,
         format: {
           type: "json_schema",
           name: "relaypress_generation",
@@ -250,7 +286,11 @@ async function generateWithOpenAi(
 
   return {
     adapted,
-    generation: buildGenerationMetadata("openai", model, sourceContent, parsed),
+    generation: buildGenerationMetadata("openai", model, sourceContent, parsed, [], {
+      textVerbosity,
+      reasoningEffort,
+      maxOutputTokens,
+    }),
   };
 }
 
