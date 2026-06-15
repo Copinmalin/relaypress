@@ -2,9 +2,9 @@
 
 Ce document est la source de verite operationnelle principale du projet RelayPress.
 
-Derniere mise a jour : 2026-06-14
+Derniere mise a jour : 2026-06-15
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. La generation evolue vers un profil B-Conseil source-grounded avec sortie JSON stricte, facts used, claims a verifier et format editorial reconnaissable. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
 
 ---
 
@@ -57,7 +57,7 @@ Principes non negociables :
 | Publisher actif par defaut | mock |
 | Source automatisee initiale | BTC Breakdown |
 | Admin | sources, signaux, jobs, vue groupee, generation IA controlee |
-| IA | OpenAI activable par environnement, fallback mock |
+| IA | OpenAI activable par environnement, fallback mock, sortie structuree en cours |
 | Publication reelle | preparee pour LinkedIn, non activee par defaut |
 
 ---
@@ -153,6 +153,21 @@ Regles :
 - La sortie OpenAI est extraite de maniere robuste depuis `output_text` ou `output[].content[]`.
 - Le parametre `temperature` n est pas envoye, car certains modeles ne le supportent pas.
 - `PUBLISHER_MODE=mock` ne bloque pas la generation IA ; il bloque seulement la diffusion reelle.
+- Le profil par defaut vise B-Conseil by Copinmalin.
+- La generation doit utiliser uniquement les sources fournies.
+- Les chiffres non presents dans la source ne doivent pas etre inventes.
+- Les extrapolations utiles doivent apparaitre dans `claims_requiring_human_review`, pas dans le texte comme faits etablis.
+- La sortie OpenAI cible un JSON strict contenant notamment `final_text`, `facts_used`, `claims_requiring_human_review`, `source_url`, `format`, `tone` et `warnings`.
+
+Formats editoriaux cibles :
+
+| Plateforme | Format |
+|---|---|
+| LinkedIn | B-Conseil, 1300 a 2000 caracteres, structure accroche / ce qui se passe / pourquoi c est important / a surveiller / signature / source |
+| X | 140 caracteres maximum imperatif |
+| Facebook | 900 a 1500 caracteres |
+| Blog Nostr | plan detaille et plus de 1500 caracteres |
+| Instagram | hors scope court terme, futur couple image + texte Meta Business |
 
 Separation critique :
 
@@ -228,6 +243,7 @@ PR G - Vue admin groupee source / signal / jobs : implemente
 PR H - Generation IA controlee : implemente
 PR I - Action admin pour declencher la generation controlee : implemente
 PR J - Finaliser LinkedIn reel controle : en cours
+PR U - Amelioration prompts generation B-Conseil source-grounded : en cours
 ```
 
 ---
@@ -239,6 +255,7 @@ PR J - Finaliser LinkedIn reel controle : en cours
 | Publication reelle accidentelle | `PUBLISHER_MODE=mock` par defaut, LinkedIn reel sous double opt-in runtime et runbook de rollback. |
 | Generation IA publiee sans validation | `/publication-jobs/:id/generate` limite aux jobs non publies `pending_review` ou `drafted`, sans passage automatique en `approved`. |
 | Republication accidentelle d un job | Le worker ne traite que les jobs `approved` sans `external_post_id` ni `published_at`, puis ecrit un run d audit. |
+| Invention ou extrapolation IA | Prompt source-grounded, JSON strict, `facts_used`, `claims_requiring_human_review`, relecture humaine obligatoire. |
 | Secrets dans le depot ou les logs | `.env` reel exclu, secrets documentes comme variables hors depot, aucun token OAuth ou `nsec` versionne. |
 | Etat DB incoherent au demarrage | Migrations serialisees par advisory lock PostgreSQL entre API et worker. |
 | Confusion entre warning metier et mode IA | Les warnings metier restent dans `error_message`; le mode et le modele de generation sont exposes separement. |
@@ -278,6 +295,6 @@ A compter de cette consolidation :
 
 ## 12. Backlog court recommande
 
-1. Terminer la consolidation documentaire et supprimer les notes PR obsoletes.
+1. Tester et stabiliser la generation B-Conseil source-grounded sur LinkedIn, X, Facebook et blog Nostr.
 2. Preparer un test LinkedIn reel limite a un seul job, uniquement avec le runbook et rollback prets.
 3. Stabiliser la doctrine des campagnes editoriales avant d ajouter de nouveaux publishers reels.
