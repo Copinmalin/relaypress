@@ -55,6 +55,8 @@ const PUBLICATION_JOB_SELECT = `
     j.adapted_content,
     j.external_post_id,
     j.error_message,
+    j.generation_mode,
+    j.generation_model,
     j.scheduled_at,
     j.published_at,
     j.created_at,
@@ -95,6 +97,8 @@ function rowToPublicationJob(row: Record<string, unknown>) {
     adaptedContent: row.adapted_content,
     externalPostId: row.external_post_id,
     errorMessage: row.error_message,
+    generationMode: row.generation_mode,
+    generationModel: row.generation_model,
     scheduledAt: row.scheduled_at,
     publishedAt: row.published_at,
     createdAt: row.created_at,
@@ -313,6 +317,8 @@ async function updatePublicationJobContent(id: string, content: string) {
           else status
         end,
         error_message = null,
+        generation_mode = null,
+        generation_model = null,
         updated_at = now()
       where id = $1
         and status in ('pending', 'pending_review', 'rejected', 'failed')
@@ -368,6 +374,8 @@ async function readaptPublicationJobContent(id: string) {
           else status
         end,
         error_message = $4,
+        generation_mode = null,
+        generation_model = null,
         updated_at = now()
       where id = $1
         and status in ('pending', 'pending_review', 'rejected', 'failed')
