@@ -115,4 +115,6 @@ export interface PublicationJob {
   adaptedContent?: string;
   externalPostId?: string;
   errorMessage?: string;
+  generationMode?: "mock" | "openai";
+  generationModel?: string;
 }
