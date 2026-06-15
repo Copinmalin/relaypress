@@ -1,7 +1,14 @@
 import type { FastifyInstance } from "fastify";
 import { requireAdminToken } from "./auth.js";
-import { adaptPublicationContent, type PublicationTarget } from "./content-adapter.js";
+import { adaptPublicationContent, type AdaptedPublicationContent, type PublicationTarget } from "./content-adapter.js";
 import { pool } from "./db.js";
+import {
+  buildFallbackGenerationOutput,
+  extractFirstUrl,
+  parseStructuredGenerationOutput,
+  type StructuredGenerationOutput,
+} from "./generation-output.js";
+import { buildGenerationPrompt, type GenerationStyleProfile } from "./generation-prompts.js";
 
 type JobParams = {
   id: string;
@@ -10,6 +17,8 @@ type JobParams = {
 type GenerateBody = {
   instruction?: string;
   mode?: "mock" | "openai";
+  styleProfile?: GenerationStyleProfile;
+  outputFormat?: string;
 };
 
 type GenerationMode = "mock" | "openai";
@@ -22,6 +31,22 @@ type JobRow = {
   adapted_content: string | null;
   external_post_id: string | null;
   published_at: Date | string | null;
+};
+
+type GenerationMetadata = {
+  mode: GenerationMode;
+  model: string | null;
+  warnings: string[];
+  factsUsed: string[];
+  claimsRequiringHumanReview: string[];
+  sourceUrl: string | null;
+  format: string | null;
+  tone: string | null;
+};
+
+type GeneratedContent = {
+  adapted: AdaptedPublicationContent;
+  generation: GenerationMetadata;
 };
 
 type OpenAiResponsePayload = {
@@ -44,6 +69,53 @@ type OpenAiResponsePayload = {
 const EDITABLE_STATUSES = new Set(["pending_review", "drafted"]);
 const DEFAULT_OPENAI_MODEL = "gpt-5.5";
 
+const GENERATION_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    final_text: {
+      type: "string",
+      description: "Publication finale prete pour relecture humaine.",
+    },
+    facts_used: {
+      type: "array",
+      description: "Faits explicitement utilises depuis la source fournie.",
+      items: { type: "string" },
+    },
+    claims_requiring_human_review: {
+      type: "array",
+      description: "Affirmations utiles mais a verifier manuellement avant publication.",
+      items: { type: "string" },
+    },
+    source_url: {
+      type: ["string", "null"],
+      description: "URL source explicite si elle est fournie.",
+    },
+    format: {
+      type: "string",
+      description: "Format editorial utilise.",
+    },
+    tone: {
+      type: "string",
+      description: "Tonalite appliquee.",
+    },
+    warnings: {
+      type: "array",
+      description: "Alertes de generation, hors warnings metier de plateforme.",
+      items: { type: "string" },
+    },
+  },
+  required: [
+    "final_text",
+    "facts_used",
+    "claims_requiring_human_review",
+    "source_url",
+    "format",
+    "tone",
+    "warnings",
+  ],
+};
+
 function hasOpenAiKey(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
 }
@@ -59,12 +131,39 @@ function selectedOpenAiModel(): string {
   return process.env.OPENAI_MODEL ?? DEFAULT_OPENAI_MODEL;
 }
 
-function buildMockGeneration(sourceContent: string, platform: PublicationTarget, instruction: string | undefined) {
+function buildGenerationMetadata(
+  mode: GenerationMode,
+  model: string | null,
+  sourceContent: string,
+  output: StructuredGenerationOutput | null,
+  extraWarnings: string[] = [],
+): GenerationMetadata {
+  return {
+    mode,
+    model,
+    warnings: [...(output?.warnings ?? []), ...extraWarnings],
+    factsUsed: output?.factsUsed ?? [],
+    claimsRequiringHumanReview: output?.claimsRequiringHumanReview ?? [],
+    sourceUrl: output?.sourceUrl ?? extractFirstUrl(sourceContent),
+    format: output?.format ?? null,
+    tone: output?.tone ?? null,
+  };
+}
+
+function buildMockGeneration(
+  sourceContent: string,
+  platform: PublicationTarget,
+  instruction: string | undefined,
+): GeneratedContent {
   const header = instruction?.trim()
     ? `Instruction editoriale: ${instruction.trim()}\n\n`
     : "";
+  const adapted = adaptPublicationContent(`${header}${sourceContent}`, platform);
 
-  return adaptPublicationContent(`${header}${sourceContent}`, platform);
+  return {
+    adapted,
+    generation: buildGenerationMetadata("mock", null, sourceContent, null),
+  };
 }
 
 function extractOpenAiText(payload: OpenAiResponsePayload): string {
@@ -80,24 +179,22 @@ function extractOpenAiText(payload: OpenAiResponsePayload): string {
     .trim() ?? "";
 }
 
-async function generateWithOpenAi(sourceContent: string, platform: PublicationTarget, instruction: string | undefined) {
+async function generateWithOpenAi(
+  sourceContent: string,
+  platform: PublicationTarget,
+  body: GenerateBody | undefined,
+): Promise<GeneratedContent | null> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const instructions = [
-    "Tu es RelayPress.",
-    "Reecris le contenu source pour la plateforme demandee.",
-    "Contraintes absolues: ne publie rien, ne pretend pas avoir publie, garde une tonalite professionnelle, respecte la source.",
-    "Retourne uniquement le texte final adapte.",
-  ].join("\n");
-
-  const inputText = [
-    `Plateforme: ${platform}`,
-    instruction?.trim() ? `Instruction editoriale: ${instruction.trim()}` : "Instruction editoriale: aucune",
-    "",
-    "Contenu source:",
+  const model = selectedOpenAiModel();
+  const prompt = buildGenerationPrompt({
+    platform,
     sourceContent,
-  ].join("\n");
+    instruction: body?.instruction,
+    styleProfile: body?.styleProfile,
+    outputFormat: body?.outputFormat,
+  });
 
   const response = await fetch("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -106,22 +203,25 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
       authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      model: selectedOpenAiModel(),
-      instructions,
+      model,
+      instructions: prompt.instructions,
       input: [
         {
           role: "user",
           content: [
             {
               type: "input_text",
-              text: inputText,
+              text: prompt.inputText,
             },
           ],
         },
       ],
       text: {
         format: {
-          type: "text",
+          type: "json_schema",
+          name: "relaypress_generation",
+          strict: true,
+          schema: GENERATION_JSON_SCHEMA,
         },
       },
       store: false,
@@ -145,7 +245,13 @@ async function generateWithOpenAi(sourceContent: string, platform: PublicationTa
     );
   }
 
-  return adaptPublicationContent(generated, platform);
+  const parsed = parseStructuredGenerationOutput(generated) ?? buildFallbackGenerationOutput(generated, sourceContent);
+  const adapted = adaptPublicationContent(parsed.finalText, platform, { preserveGeneratedStructure: true });
+
+  return {
+    adapted,
+    generation: buildGenerationMetadata("openai", model, sourceContent, parsed),
+  };
 }
 
 function rowToJob(row: Record<string, unknown>) {
@@ -265,18 +371,16 @@ export async function registerAiGenerationRoutes(app: FastifyInstance): Promise<
       }
 
       const mode = parseMode(request.body?.mode);
-      const model = mode === "openai" ? selectedOpenAiModel() : null;
-      const adapted = mode === "openai"
-        ? await generateWithOpenAi(sourceContent, job.platform, request.body?.instruction) ?? buildMockGeneration(sourceContent, job.platform, request.body?.instruction)
+      const generated = mode === "openai"
+        ? await generateWithOpenAi(sourceContent, job.platform, request.body) ?? buildMockGeneration(sourceContent, job.platform, request.body?.instruction)
         : buildMockGeneration(sourceContent, job.platform, request.body?.instruction);
 
-      const warnings = adapted.warnings;
       const updatedJob = await updateGeneratedContent(
         request.params.id,
-        adapted.content,
-        warnings.length ? warnings.join(",") : null,
-        mode,
-        model,
+        generated.adapted.content,
+        generated.adapted.warnings.length ? generated.adapted.warnings.join(",") : null,
+        generated.generation.mode,
+        generated.generation.model,
       );
 
       if (!updatedJob) {
@@ -287,14 +391,10 @@ export async function registerAiGenerationRoutes(app: FastifyInstance): Promise<
       }
 
       return {
-        mode,
-        model,
-        warnings,
-        generation: {
-          mode,
-          model,
-          warnings,
-        },
+        mode: generated.generation.mode,
+        model: generated.generation.model,
+        warnings: generated.adapted.warnings,
+        generation: generated.generation,
         job: updatedJob,
       };
     },
