@@ -15,7 +15,18 @@ export type GenerationPrompt = {
   inputText: string;
 };
 
-const BCONSEIL_SIGNATURE = "Decouvrir plus / aller plus loin : consultez copinmalin.top";
+const BCONSEIL_SIGNATURE = "Pour aller plus loin sur Bitcoin, la souverainete et les usages concrets : copinmalin.top";
+
+const EDITORIAL_BENCHMARK_RULES = [
+  "Choisir un seul angle fort, pas un catalogue de sujets.",
+  "Commencer par une accroche utile qui dit au lecteur pourquoi il doit lire maintenant.",
+  "Analyser l'actualite au lieu de seulement la resumer.",
+  "Faire apparaitre un benefice lecteur clair : comprendre, surveiller, verifier, agir prudemment.",
+  "Eviter les titres de rubrique froids quand une transition naturelle est possible.",
+  "Utiliser des paragraphes courts et respirants.",
+  "Placer un CTA contextualise avant la source, relie au sujet de la publication.",
+  "Crediter explicitement la source.",
+];
 
 type PlatformRules = {
   format: string;
@@ -28,7 +39,12 @@ function platformRules(platform: PublicationTarget): PlatformRules {
     return {
       format: "x_bconseil_signal",
       length: "140 caracteres maximum, imperatif.",
-      structure: ["Une phrase claire.", "Lien source si disponible.", "Pas de thread."],
+      structure: [
+        "Une seule idee.",
+        "Une phrase dense, claire, sans slogan.",
+        "Lien source si disponible et si la limite le permet.",
+        "Pas de thread, pas de teasing vide, pas de hashtag obligatoire.",
+      ],
     };
   }
 
@@ -36,7 +52,14 @@ function platformRules(platform: PublicationTarget): PlatformRules {
     return {
       format: "facebook_bconseil_signal",
       length: "900 a 1500 caracteres.",
-      structure: ["Accroche sobre.", "Ce qui se passe.", "Pourquoi c'est important.", "A surveiller, 1 a 3 puces.", BCONSEIL_SIGNATURE, "Source explicite."],
+      structure: [
+        "Accroche sobre mais engageante.",
+        "Ce qui se passe, en 2 a 4 lignes.",
+        "Pourquoi c'est important pour comprendre Bitcoin concretement.",
+        "A surveiller, 1 a 3 puces.",
+        "CTA contextualise vers copinmalin.top.",
+        "Source explicite.",
+      ],
     };
   }
 
@@ -44,7 +67,12 @@ function platformRules(platform: PublicationTarget): PlatformRules {
     return {
       format: "instagram_future_meta_business_caption",
       length: "Utiliser provisoirement le format Facebook. L'image sera traitee plus tard.",
-      structure: ["Texte compatible Meta Business.", "Ne pas decrire une image absente.", "Source explicite."],
+      structure: [
+        "Texte compatible Meta Business.",
+        "Ne pas decrire une image absente.",
+        "CTA contextualise vers copinmalin.top.",
+        "Source explicite.",
+      ],
     };
   }
 
@@ -52,7 +80,16 @@ function platformRules(platform: PublicationTarget): PlatformRules {
     return {
       format: "nostr_reference_blog_plan",
       length: "Plus de 1500 caracteres, avec plan detaille.",
-      structure: ["Titre de travail.", "Accroche sobre.", "Plan detaille.", "Contexte factuel source.", "Pourquoi c'est important.", "Points a verifier.", BCONSEIL_SIGNATURE, "Source explicite."],
+      structure: [
+        "Titre de travail oriente lecteur.",
+        "Accroche sobre mais vivante.",
+        "Plan detaille.",
+        "Contexte factuel source.",
+        "Pourquoi c'est important.",
+        "Ce que le lecteur peut surveiller ou approfondir.",
+        "CTA contextualise vers copinmalin.top.",
+        "Source explicite.",
+      ],
     };
   }
 
@@ -60,26 +97,31 @@ function platformRules(platform: PublicationTarget): PlatformRules {
     format: "linkedin_bconseil_signal",
     length: "1300 a 2000 caracteres.",
     structure: [
-      "Accroche sobre : 1 a 2 lignes, signal principal sans dramatisation.",
-      "Ce qui se passe : 2 a 4 lignes, resume factuel uniquement depuis la source.",
-      "Pourquoi c'est important : 3 a 5 lignes, mise en perspective Bitcoin / souverainete / infrastructure / marche, sans conseil financier.",
-      "A surveiller : 1 a 3 puces maximum.",
-      BCONSEIL_SIGNATURE,
-      "Source explicite.",
+      "Accroche sobre mais travaillée : 1 a 2 lignes, signal principal et enjeu lecteur.",
+      "Ce qui se passe : 2 a 4 lignes factuelles, uniquement depuis la source.",
+      "Pourquoi c'est important : 3 a 5 lignes avec mise en perspective Bitcoin / souverainete / infrastructure / marche, sans conseil financier.",
+      "A surveiller : 1 a 3 puces maximum, concretes et actionnables intellectuellement.",
+      "CTA contextualise : relier l'actualite au besoin de comprendre Bitcoin, puis inviter a consulter copinmalin.top.",
+      "Source explicite en derniere ligne.",
     ],
   };
 }
 
 function profileTone(styleProfile: GenerationStyleProfile | undefined): string[] {
   if (styleProfile === "relaypress_neutre") {
-    return ["Ton neutre, factuel, sobre."];
+    return ["Ton neutre, factuel, sobre.", "Peu de marque personnelle."];
   }
 
   if (styleProfile === "alpinechain_pedagogique") {
-    return ["Ton pedagogique, accessible aux curieux Bitcoin."];
+    return ["Ton pedagogique, accessible aux curieux Bitcoin.", "Expliquer sans jargon inutile."];
   }
 
-  return ["Ton professionnel, sobre, pedagogique, accessible grand public.", "Positionnement B-Conseil by Copinmalin."];
+  return [
+    "Ton professionnel, sobre, pedagogique, accessible grand public.",
+    "Positionnement B-Conseil by Copinmalin.",
+    "Style reconnaissable : clair, ancre dans l'actualite, oriente comprehension et souverainete.",
+    "La publication doit donner envie de consulter copinmalin.top pour approfondir le sujet, pas seulement de lire la source.",
+  ];
 }
 
 function list(items: string[]): string {
@@ -99,6 +141,10 @@ export function buildGenerationPrompt(input: GenerationPromptInput): GenerationP
     "",
     "# MISSION",
     "Transformer un signal source en publication utile pour informer le grand public.",
+    "Le texte final doit etre plus qu'un resume : il doit proposer un angle, une mise en perspective et une invitation claire a approfondir.",
+    "",
+    "# BENCHMARK EDITORIAL A RESPECTER",
+    list(EDITORIAL_BENCHMARK_RULES),
     "",
     "# REGLES FACTUELLES",
     list([
@@ -111,10 +157,27 @@ export function buildGenerationPrompt(input: GenerationPromptInput): GenerationP
       "Si la source ne permet pas d'etre precis, formuler prudemment.",
       "Si une affirmation utile n'est pas explicitement sourcee, l'ajouter dans claims_requiring_human_review.",
       "Conserver le lien source fourni quand il existe.",
+      "Ne pas traiter un element du titre si le contenu fourni ne donne pas assez d'information pour l'expliquer.",
     ]),
     "",
     "# TON",
-    list([...profileTone(styleProfile), "Pas de hype.", "Pas de conseil financier.", "Pas de promesse de rendement.", "Pas d'effet influenceur crypto.", "Pas de dramatisation."]),
+    list([
+      ...profileTone(styleProfile),
+      "Pas de hype.",
+      "Pas de conseil financier.",
+      "Pas de promesse de rendement.",
+      "Pas d'effet influenceur crypto.",
+      "Pas de dramatisation.",
+      "Pas de formulation molle du type 'ce signal est important' sans expliquer pourquoi.",
+    ]),
+    "",
+    "# CTA B-CONSEIL",
+    list([
+      "Le CTA doit etre relie au sujet traite, pas generique.",
+      "Exemple attendu : 'Pour comprendre ce que ce type de signal change dans votre lecture de Bitcoin, allez plus loin sur copinmalin.top.'",
+      "Ne pas promettre une formation, un rendement ou un accompagnement si la source ne le justifie pas.",
+      `Signature de reference : ${BCONSEIL_SIGNATURE}`,
+    ]),
     "",
     "# FORMAT PLATEFORME",
     `Plateforme: ${input.platform}`,
@@ -124,6 +187,8 @@ export function buildGenerationPrompt(input: GenerationPromptInput): GenerationP
     "",
     "# SORTIE",
     "Retourner uniquement un JSON strict, sans Markdown autour, sans texte hors JSON.",
+    "Le champ final_text doit contenir la publication finale uniquement, prete pour relecture humaine.",
+    "Les champs facts_used et claims_requiring_human_review servent au controle editorial, pas au texte public.",
   ].join("\n");
 
   const inputText = [
