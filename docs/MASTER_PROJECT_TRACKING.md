@@ -131,6 +131,8 @@ Regles essentielles :
 - Elle reecrit uniquement `adapted_content`.
 - Elle ne change pas le statut en `approved`.
 - Elle ne publie rien.
+- Elle ne doit pas archiver automatiquement le job genere.
+- Apres generation, le job reste `pending_review` ou `drafted` jusqu a une decision humaine : modifier, approuver, rejeter ou archiver.
 - La publication reelle reste limitee aux jobs explicitement `approved`, traites par le worker selon le publisher arme.
 
 ---
@@ -254,6 +256,7 @@ PR U - Amelioration prompts generation B-Conseil source-grounded : en cours
 |---|---|
 | Publication reelle accidentelle | `PUBLISHER_MODE=mock` par defaut, LinkedIn reel sous double opt-in runtime et runbook de rollback. |
 | Generation IA publiee sans validation | `/publication-jobs/:id/generate` limite aux jobs non publies `pending_review` ou `drafted`, sans passage automatique en `approved`. |
+| Archivage premature apres generation | Le smoke test laisse le job en `pending_review` par defaut. L archivage de nettoyage exige `SMOKE_CLEANUP=1`. |
 | Republication accidentelle d un job | Le worker ne traite que les jobs `approved` sans `external_post_id` ni `published_at`, puis ecrit un run d audit. |
 | Invention ou extrapolation IA | Prompt source-grounded, JSON strict, `facts_used`, `claims_requiring_human_review`, relecture humaine obligatoire. |
 | Secrets dans le depot ou les logs | `.env` reel exclu, secrets documentes comme variables hors depot, aucun token OAuth ou `nsec` versionne. |
@@ -278,6 +281,8 @@ Resultats a conserver comme reference :
 - publication executee en mock ;
 - run d audit cree ;
 - anti-republication confirme par un second tick worker.
+
+Le smoke test PR U doit laisser le job genere en `pending_review` pour permettre la revue humaine. Le nettoyage automatique est desactive par defaut et ne s execute que si `SMOKE_CLEANUP=1` est fourni explicitement.
 
 ---
 
