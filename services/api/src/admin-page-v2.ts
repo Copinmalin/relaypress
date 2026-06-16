@@ -50,7 +50,7 @@ const adminHtml = String.raw`<!doctype html>
         <button class="primary" id="refresh">Rafraîchir</button>
       </div>
       <div class="bulk">
-        <label><input id="selectAllArchivable" type="checkbox" /> Sélectionner les jobs terminés visibles</label>
+        <label><input id="selectAllArchivable" type="checkbox" /> Sélectionner les jobs visibles archivables</label>
         <button id="archiveSelected">Archiver la sélection</button>
         <span class="hint" id="selectionStatus">0 job sélectionné.</span>
       </div>
