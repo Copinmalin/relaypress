@@ -48,7 +48,7 @@ function platformRules(platform: PublicationTarget): PlatformRules {
   if (platform === "x") {
     return {
       format: "x_bconseil_signal",
-      length: "140 caracteres maximum, imperatif.",
+      length: "140 caracteres maximum, imperatif, URL comprise.",
       structure: [
         "Une seule idee.",
         "Une phrase dense, claire, sans slogan.",
@@ -83,6 +83,26 @@ function platformRules(platform: PublicationTarget): PlatformRules {
         "Ne pas decrire une image absente.",
         "CTA pour decouvrir, s'informer ou se former sur copinmalin.top.",
         "Source explicite.",
+      ],
+    };
+  }
+
+  if (platform === "nostr_longform") {
+    return {
+      format: "nostr_longform_bconseil_article",
+      length: "Plus de 1500 caracteres. Produire un article complet, pas seulement un plan.",
+      structure: [
+        "Le plan doit etre visible dans le texte final avec des intertitres explicites.",
+        "Titre clair et oriente lecteur.",
+        "Accroche.",
+        "Contexte.",
+        "Faits etablis.",
+        "Analyse originale en francais.",
+        "Implications Bitcoin / souverainete / liberte / open-source / autonomie.",
+        "Limites ou incertitudes.",
+        "Sources avec URL explicite.",
+        "CTA contextualise vers copinmalin.top pour decouvrir, s'informer ou se former.",
+        "Le texte doit etre directement publiable sur Nostr apres revue humaine.",
       ],
     };
   }
