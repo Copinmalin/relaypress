@@ -7,6 +7,10 @@ export type AdaptedPublicationContent = {
   warnings: string[];
 };
 
+export type AdaptPublicationOptions = {
+  preserveGeneratedStructure?: boolean;
+};
+
 function removePublishCommand(content: string): string {
   return content
     .split(/\r?\n/)
@@ -84,23 +88,41 @@ export function cleanSourceContent(content: string): string {
   return normalizeWhitespace(cleanPublishHashtags(removePublishCommand(content)));
 }
 
-export function adaptPublicationContent(
-  sourceContent: string,
-  platform: PublicationTarget,
-): AdaptedPublicationContent {
-  const cleanContent = cleanSourceContent(sourceContent);
-  const warnings: string[] = [];
-  const content = platform === "linkedin" ? adaptLinkedInContent(cleanContent) : cleanContent;
-
-  if (!content) {
-    warnings.push("empty_content_after_cleaning");
-  }
+function addPlatformWarnings(platform: PublicationTarget, content: string, warnings: string[]): void {
+  if (!content) return;
 
   if (platform === "x" && content.length > 140) {
     warnings.push("x_content_over_140_chars");
   }
 
-  if (platform === "linkedin" && content.length > cleanContent.length) {
+  if (platform === "linkedin") {
+    if (content.length < 1300) warnings.push("linkedin_content_under_1300_chars");
+    if (content.length > 2000) warnings.push("linkedin_content_over_2000_chars");
+  }
+
+  if (platform === "facebook") {
+    if (content.length < 900) warnings.push("facebook_content_under_900_chars");
+    if (content.length > 1500) warnings.push("facebook_content_over_1500_chars");
+  }
+}
+
+export function adaptPublicationContent(
+  sourceContent: string,
+  platform: PublicationTarget,
+  options: AdaptPublicationOptions = {},
+): AdaptedPublicationContent {
+  const cleanContent = cleanSourceContent(sourceContent);
+  const warnings: string[] = [];
+  const shouldApplyDeterministicStructure = platform === "linkedin" && !options.preserveGeneratedStructure;
+  const content = shouldApplyDeterministicStructure ? adaptLinkedInContent(cleanContent) : cleanContent;
+
+  if (!content) {
+    warnings.push("empty_content_after_cleaning");
+  }
+
+  addPlatformWarnings(platform, content, warnings);
+
+  if (shouldApplyDeterministicStructure && content.length > cleanContent.length) {
     warnings.push("linkedin_content_structured_deterministically");
   }
 
