@@ -14,14 +14,14 @@ type JobParams = {
   id: string;
 };
 
-type GenerateBody = {
+export type GenerateBody = {
   instruction?: string;
   mode?: "mock" | "openai";
   styleProfile?: GenerationStyleProfile;
   outputFormat?: string;
 };
 
-type GenerationMode = "mock" | "openai";
+export type GenerationMode = "mock" | "openai";
 type OpenAiTextVerbosity = "low" | "medium" | "high";
 type OpenAiReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
@@ -35,7 +35,7 @@ type JobRow = {
   published_at: Date | string | null;
 };
 
-type GenerationMetadata = {
+export type GenerationMetadata = {
   mode: GenerationMode;
   model: string | null;
   warnings: string[];
@@ -53,6 +53,18 @@ type GeneratedContent = {
   adapted: AdaptedPublicationContent;
   generation: GenerationMetadata;
 };
+
+export type GenerationResponse = {
+  mode: GenerationMode;
+  model: string | null;
+  warnings: string[];
+  generation: GenerationMetadata;
+  job: Record<string, unknown>;
+};
+
+export type GenerationOperationResult =
+  | { ok: true; value: GenerationResponse }
+  | { ok: false; statusCode: number; error: string; message: string };
 
 type OpenAiResponsePayload = {
   id?: string;
@@ -380,63 +392,94 @@ async function updateGeneratedContent(
   return result.rows[0] ? rowToJob(result.rows[0]) : null;
 }
 
+export async function generatePublicationJob(
+  id: string,
+  body: GenerateBody = {},
+): Promise<GenerationOperationResult> {
+  const job = await findJob(id);
+
+  if (!job) {
+    return { ok: false, statusCode: 404, error: "not_found", message: "Publication job not found" };
+  }
+
+  if (!EDITABLE_STATUSES.has(job.status)) {
+    return {
+      ok: false,
+      statusCode: 409,
+      error: "job_not_generatable",
+      message: "Only pending_review or drafted unpublished jobs can be generated",
+    };
+  }
+
+  if (job.external_post_id || job.published_at) {
+    return {
+      ok: false,
+      statusCode: 409,
+      error: "job_already_published",
+      message: "Already published jobs cannot be generated",
+    };
+  }
+
+  const sourceContent = String(job.source_content ?? job.adapted_content ?? "").trim();
+  if (!sourceContent) {
+    return {
+      ok: false,
+      statusCode: 400,
+      error: "empty_source_content",
+      message: "source_content is required",
+    };
+  }
+
+  const mode = parseMode(body.mode);
+  const generated = mode === "openai"
+    ? await generateWithOpenAi(sourceContent, job.platform, body)
+      ?? buildMockGeneration(sourceContent, job.platform, body.instruction)
+    : buildMockGeneration(sourceContent, job.platform, body.instruction);
+
+  const updatedJob = await updateGeneratedContent(
+    id,
+    generated.adapted.content,
+    generated.adapted.warnings.length ? generated.adapted.warnings.join(",") : null,
+    generated.generation.mode,
+    generated.generation.model,
+  );
+
+  if (!updatedJob) {
+    return {
+      ok: false,
+      statusCode: 409,
+      error: "job_not_updated",
+      message: "Job could not be updated without changing approval or publication status",
+    };
+  }
+
+  return {
+    ok: true,
+    value: {
+      mode: generated.generation.mode,
+      model: generated.generation.model,
+      warnings: generated.adapted.warnings,
+      generation: generated.generation,
+      job: updatedJob,
+    },
+  };
+}
+
 export async function registerAiGenerationRoutes(app: FastifyInstance): Promise<void> {
   app.post<{ Params: JobParams; Body: GenerateBody }>(
     "/publication-jobs/:id/generate",
     { preHandler: requireAdminToken },
     async (request, reply) => {
-      const job = await findJob(request.params.id);
+      const result = await generatePublicationJob(request.params.id, request.body ?? {});
 
-      if (!job) {
-        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
-      }
-
-      if (!EDITABLE_STATUSES.has(job.status)) {
-        return reply.code(409).send({
-          error: "job_not_generatable",
-          message: "Only pending_review or drafted unpublished jobs can be generated",
+      if (!result.ok) {
+        return reply.code(result.statusCode).send({
+          error: result.error,
+          message: result.message,
         });
       }
 
-      if (job.external_post_id || job.published_at) {
-        return reply.code(409).send({
-          error: "job_already_published",
-          message: "Already published jobs cannot be generated",
-        });
-      }
-
-      const sourceContent = String(job.source_content ?? job.adapted_content ?? "").trim();
-      if (!sourceContent) {
-        return reply.code(400).send({ error: "empty_source_content", message: "source_content is required" });
-      }
-
-      const mode = parseMode(request.body?.mode);
-      const generated = mode === "openai"
-        ? await generateWithOpenAi(sourceContent, job.platform, request.body) ?? buildMockGeneration(sourceContent, job.platform, request.body?.instruction)
-        : buildMockGeneration(sourceContent, job.platform, request.body?.instruction);
-
-      const updatedJob = await updateGeneratedContent(
-        request.params.id,
-        generated.adapted.content,
-        generated.adapted.warnings.length ? generated.adapted.warnings.join(",") : null,
-        generated.generation.mode,
-        generated.generation.model,
-      );
-
-      if (!updatedJob) {
-        return reply.code(409).send({
-          error: "job_not_updated",
-          message: "Job could not be updated without changing approval or publication status",
-        });
-      }
-
-      return {
-        mode: generated.generation.mode,
-        model: generated.generation.model,
-        warnings: generated.adapted.warnings,
-        generation: generated.generation,
-        job: updatedJob,
-      };
+      return result.value;
     },
   );
 }
