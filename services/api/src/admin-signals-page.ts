@@ -85,10 +85,29 @@ const signalsHtml = String.raw`<!doctype html>
       alert(payload.count + ' job(s) prepare(s).');
       window.location.href = '/admin?view=todo';
     }
+    async function generateCampaign(id, button) {
+      if (!confirm('Generer les versions LinkedIn, X, Facebook et Nostr long-form ? Aucun contenu ne sera approuve ni publie automatiquement.')) return;
+      button.disabled = true;
+      button.textContent = 'Generation en cours...';
+      try {
+        var payload = await api(signalUrl(id, '/generate-campaign'), {
+          method: 'POST',
+          body: {
+            platforms: ['linkedin', 'x', 'facebook', 'nostr_longform'],
+            styleProfile: 'bconseil_pro'
+          }
+        });
+        alert(payload.generatedCount + ' format(s) genere(s), ' + payload.failedCount + ' echec(s). Tous les jobs restent en pending_review.');
+        window.location.href = '/admin?view=todo';
+      } finally {
+        button.disabled = false;
+        button.textContent = 'Generer la campagne B-Conseil';
+      }
+    }
     function primarySourcesList(value) { var sources = Array.isArray(value) ? value : []; if (!sources.length) return '<div class="hint">Aucune source primaire ajoutee.</div>'; return '<ul>' + sources.map(function (source) { return '<li><a href="' + esc(source) + '" target="_blank" rel="noreferrer">' + esc(source) + '</a></li>'; }).join('') + '</ul>'; }
     function platformControls(signal) {
-      if (signal.status !== 'ready_for_campaign') return '<div class="hint">Passe ce signal en ready_for_campaign pour preparer des jobs.</div>';
-      return '<div class="panel"><div class="hint">Preparation explicite des jobs. Aucun job ne sera approuve ni publie automatiquement.</div><div class="controls"><label><input type="checkbox" data-platform value="x" checked /> X</label><label><input type="checkbox" data-platform value="linkedin" checked /> LinkedIn</label><label><input type="checkbox" data-platform value="facebook" /> Facebook</label><label><input type="checkbox" data-platform value="instagram" /> Instagram</label><select data-job-status><option value="pending_review">pending_review</option><option value="drafted">drafted</option></select><button class="primary" data-action="create_jobs">Preparer les jobs</button></div></div>';
+      if (signal.status !== 'ready_for_campaign') return '<div class="hint">Passe ce signal en ready_for_campaign pour preparer ou generer des jobs.</div>';
+      return '<div class="panel"><div class="hint">Generation multi-format : LinkedIn, X, Facebook et article Nostr long-form. Aucun job ne sera approuve, publie ou archive automatiquement.</div><div class="actions"><button class="primary" data-action="generate_campaign">Generer la campagne B-Conseil</button></div><hr/><div class="hint">Preparation manuelle de jobs sans generation IA.</div><div class="controls"><label><input type="checkbox" data-platform value="x" checked /> X</label><label><input type="checkbox" data-platform value="linkedin" checked /> LinkedIn</label><label><input type="checkbox" data-platform value="facebook" /> Facebook</label><label><input type="checkbox" data-platform value="nostr_longform" /> Nostr long-form</label><label><input type="checkbox" data-platform value="instagram" /> Instagram</label><select data-job-status><option value="pending_review">pending_review</option><option value="drafted">drafted</option></select><button data-action="create_jobs">Preparer les jobs</button></div></div>';
     }
     function signalCard(signal) {
       var source = signal.sourceItem || {};
@@ -114,8 +133,10 @@ const signalsHtml = String.raw`<!doctype html>
       card.querySelector('[data-action="ready_for_campaign"]').addEventListener('click', function () { changeStatus(signal.id, 'ready_for_campaign').catch(function (error) { alert(error.message); }); });
       card.querySelector('[data-action="ignored"]').addEventListener('click', function () { changeStatus(signal.id, 'ignored').catch(function (error) { alert(error.message); }); });
       card.querySelector('[data-action="archived"]').addEventListener('click', function () { if (confirm('Archiver ce signal ?')) changeStatus(signal.id, 'archived').catch(function (error) { alert(error.message); }); });
-      var button = card.querySelector('[data-action="create_jobs"]');
-      if (button) button.addEventListener('click', function () { createJobsFromSignal(signal.id, card).catch(function (error) { alert(error.message); }); });
+      var createButton = card.querySelector('[data-action="create_jobs"]');
+      if (createButton) createButton.addEventListener('click', function () { createJobsFromSignal(signal.id, card).catch(function (error) { alert(error.message); }); });
+      var generateButton = card.querySelector('[data-action="generate_campaign"]');
+      if (generateButton) generateButton.addEventListener('click', function () { generateCampaign(signal.id, generateButton).catch(function (error) { alert(error.message); }); });
       return card;
     }
     async function loadSignals() { updateTokenHint(); saveFilters(); cards.innerHTML = ''; statusLine.textContent = 'Chargement...'; try { var payload = await api('/editorial-signals?' + buildQuery().toString()); statusLine.textContent = payload.count + ' signal(aux).'; if (!payload.signals.length) { cards.innerHTML = '<div class="panel empty">Aucun signal pour ces filtres.</div>'; return; } payload.signals.forEach(function (signal) { cards.appendChild(signalCard(signal)); }); } catch (error) { statusLine.textContent = 'Erreur: ' + error.message; } }
