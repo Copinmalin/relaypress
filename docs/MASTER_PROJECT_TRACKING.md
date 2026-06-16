@@ -2,9 +2,9 @@
 
 Ce document est la source de verite operationnelle principale du projet RelayPress.
 
-Derniere mise a jour : 2026-06-15
+Derniere mise a jour : 2026-06-16
 
-Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> preparation explicite de jobs -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. La generation evolue vers un profil B-Conseil source-grounded avec sortie JSON stricte, facts used, claims a verifier et format editorial reconnaissable. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
+Etat global : MVP editorial souverain fonctionnel en staging. La trajectoire produit est recentree sur sources -> signaux editoriaux -> campagnes multi-formats -> generation controlee -> validation -> publication multi-canal. La generation OpenAI controlee parse la sortie Responses API de maniere robuste, sans changer les garde-fous metier ni le mode mock par defaut. Le profil B-Conseil source-grounded produit des sorties structurees et des textes adaptes a chaque canal. La PR V ajoute la generation d une campagne LinkedIn, X, Facebook et Nostr long-form depuis un meme signal, sans approbation, publication ni archivage automatiques. Les migrations DB sont serialisees par advisory lock PostgreSQL pour fiabiliser le demarrage concurrent API / worker.
 
 ---
 
@@ -33,6 +33,7 @@ Principes non negociables :
 - L IA propose et reformate ; l humain valide ; le publisher execute.
 - La generation IA ne valide jamais un job.
 - La generation IA ne publie jamais.
+- La generation IA ne doit jamais archiver automatiquement un job.
 - Un job publie ou rattache a un `external_post_id` ne doit jamais etre regenere ou republie accidentellement.
 - `PUBLISHER_MODE=mock` reste le defaut sur tant que les publishers reels ne sont pas durcis.
 - LinkedIn reel exige un double opt-in runtime avant usage.
@@ -56,8 +57,8 @@ Principes non negociables :
 | Worker | orchestration asynchrone et publishers |
 | Publisher actif par defaut | mock |
 | Source automatisee initiale | BTC Breakdown |
-| Admin | sources, signaux, jobs, vue groupee, generation IA controlee |
-| IA | OpenAI activable par environnement, fallback mock, sortie structuree en cours |
+| Admin | sources, signaux, jobs, vue groupee, generation IA controlee et campagne multi-format |
+| IA | OpenAI activable par environnement, fallback mock, sortie structuree |
 | Publication reelle | preparee pour LinkedIn, non activee par defaut |
 
 ---
@@ -76,6 +77,11 @@ PublicationJob
 
 Generation controlee
   reecrit adapted_content sur demande admin, sans validation ni publication
+
+Campagne multi-format
+  cree et genere plusieurs PublicationJob depuis un meme signal
+  conserve chaque variante en pending_review
+  tolere les echecs partiels sans publier
 
 Worker
   traite les jobs approuves et execute le publisher configure
@@ -133,6 +139,8 @@ Regles essentielles :
 - Elle ne publie rien.
 - Elle ne doit pas archiver automatiquement le job genere.
 - Apres generation, le job reste `pending_review` ou `drafted` jusqu a une decision humaine : modifier, approuver, rejeter ou archiver.
+- La route de campagne multi-format cree les jobs en `pending_review` et les genere sequentiellement.
+- Une erreur de generation sur un canal ne doit pas annuler les autres variantes.
 - La publication reelle reste limitee aux jobs explicitement `approved`, traites par le worker selon le publisher arme.
 
 ---
@@ -161,15 +169,34 @@ Regles :
 - Les extrapolations utiles doivent apparaitre dans `claims_requiring_human_review`, pas dans le texte comme faits etablis.
 - La sortie OpenAI cible un JSON strict contenant notamment `final_text`, `facts_used`, `claims_requiring_human_review`, `source_url`, `format`, `tone` et `warnings`.
 
+Route campagne multi-format :
+
+```text
+POST /editorial-signals/:id/generate-campaign
+```
+
+Comportement :
+
+- signal obligatoire en `ready_for_campaign` ;
+- plateformes par defaut : `linkedin`, `x`, `facebook`, `nostr_longform` ;
+- creation idempotente des jobs ;
+- generation sequentielle ;
+- tous les jobs restent en `pending_review` ;
+- aucune publication ni archivage ;
+- resultat detaille par plateforme ;
+- succes partiel possible.
+
 Formats editoriaux cibles :
 
 | Plateforme | Format |
 |---|---|
-| LinkedIn | B-Conseil, 1300 a 2000 caracteres, structure accroche / ce qui se passe / pourquoi c est important / a surveiller / signature / source |
-| X | 140 caracteres maximum imperatif |
-| Facebook | 900 a 1500 caracteres |
-| Blog Nostr | plan detaille et plus de 1500 caracteres |
+| LinkedIn | B-Conseil, 1300 a 2000 caracteres, publication directe, CTA contextualise et source explicite |
+| X | 140 caracteres maximum imperatif, limite appliquee de maniere deterministe si necessaire |
+| Facebook | 900 a 1500 caracteres, pedagogique et accessible grand public |
+| Nostr long-form | article complet de plus de 1500 caracteres, plan visible, analyse, limites, sources et CTA |
 | Instagram | hors scope court terme, futur couple image + texte Meta Business |
+
+`nostr_longform` est un format de preparation et de revue. Aucun publisher Nostr n est branche dans cette PR. Le worker ne doit donc pas reclamer ce type de job tant qu un publisher dedie n existe pas.
 
 Separation critique :
 
@@ -187,6 +214,7 @@ Etat actuel :
 - Le publisher mock reste le comportement par defaut.
 - LinkedIn reel dispose de garde-fous et d un runbook, mais ne doit etre arme que pendant un test controle.
 - Les autres publishers reels restent hors execution tant que leur securite, OAuth, rollback et audit ne sont pas finalises.
+- Le publisher mock ne supporte pas `nostr_longform` dans cette phase ; la generation et la revue restent toutefois possibles.
 
 Variables sensibles ou critiques :
 
@@ -245,7 +273,8 @@ PR G - Vue admin groupee source / signal / jobs : implemente
 PR H - Generation IA controlee : implemente
 PR I - Action admin pour declencher la generation controlee : implemente
 PR J - Finaliser LinkedIn reel controle : en cours
-PR U - Amelioration prompts generation B-Conseil source-grounded : en cours
+PR U - Amelioration prompts generation B-Conseil source-grounded : implemente
+PR V - Generation campagne LinkedIn / X / Facebook / Nostr long-form : en cours
 ```
 
 ---
@@ -255,8 +284,12 @@ PR U - Amelioration prompts generation B-Conseil source-grounded : en cours
 | Risque | Controle |
 |---|---|
 | Publication reelle accidentelle | `PUBLISHER_MODE=mock` par defaut, LinkedIn reel sous double opt-in runtime et runbook de rollback. |
-| Generation IA publiee sans validation | `/publication-jobs/:id/generate` limite aux jobs non publies `pending_review` ou `drafted`, sans passage automatique en `approved`. |
-| Archivage premature apres generation | Le smoke test laisse le job en `pending_review` par defaut. L archivage de nettoyage exige `SMOKE_CLEANUP=1`. |
+| Generation IA publiee sans validation | Generation limitee aux jobs non publies `pending_review` ou `drafted`, sans passage automatique en `approved`. |
+| Archivage premature apres generation | Les routes de generation n archivent jamais. Les scripts de smoke laissent les jobs en revue. |
+| Doublons de campagne | IDs deterministes `signal:<signalId>:<platform>` et `on conflict do nothing`. |
+| Echec d une plateforme | Resultat detaille par canal et traitement sequentiel ; les autres variantes sont conservees. |
+| Depassement X | Adaptateur borne le contenu a 140 caracteres et expose un warning de troncature. |
+| Nostr long-form approuve sans publisher | Le worker ne reclame que les plateformes supportees par le publisher selectionne. |
 | Republication accidentelle d un job | Le worker ne traite que les jobs `approved` sans `external_post_id` ni `published_at`, puis ecrit un run d audit. |
 | Invention ou extrapolation IA | Prompt source-grounded, JSON strict, `facts_used`, `claims_requiring_human_review`, relecture humaine obligatoire. |
 | Secrets dans le depot ou les logs | `.env` reel exclu, secrets documentes comme variables hors depot, aucun token OAuth ou `nsec` versionne. |
@@ -265,9 +298,9 @@ PR U - Amelioration prompts generation B-Conseil source-grounded : en cours
 
 ---
 
-## 10. Smoke test staging valide
+## 10. Smoke tests staging
 
-Le 2026-06-14, le parcours staging suivant a ete valide en mode controle :
+Parcours historique valide :
 
 ```text
 source -> signal -> jobs -> generation OpenAI -> validation humaine LinkedIn -> publication mock -> audit run
@@ -282,7 +315,18 @@ Resultats a conserver comme reference :
 - run d audit cree ;
 - anti-republication confirme par un second tick worker.
 
-Le smoke test PR U doit laisser le job genere en `pending_review` pour permettre la revue humaine. Le nettoyage automatique est desactive par defaut et ne s execute que si `SMOKE_CLEANUP=1` est fourni explicitement.
+Le smoke test PR U laisse le job genere en `pending_review` pour permettre la revue humaine.
+
+Le smoke test PR V doit verifier :
+
+- quatre variantes depuis un meme signal ;
+- LinkedIn, X, Facebook et Nostr long-form ;
+- limite X de 140 caracteres ;
+- article Nostr long-form de plus de 1500 caracteres avec plan visible ;
+- tous les jobs en `pending_review` ;
+- aucun `external_post_id` ;
+- aucun `published_at` ;
+- aucun archivage automatique.
 
 ---
 
@@ -300,6 +344,7 @@ A compter de cette consolidation :
 
 ## 12. Backlog court recommande
 
-1. Tester et stabiliser la generation B-Conseil source-grounded sur LinkedIn, X, Facebook et blog Nostr.
+1. Valider PR V en staging avec quatre variantes et revue humaine.
 2. Preparer un test LinkedIn reel limite a un seul job, uniquement avec le runbook et rollback prets.
-3. Stabiliser la doctrine des campagnes editoriales avant d ajouter de nouveaux publishers reels.
+3. Concevoir le publisher Nostr long-form dans une PR distincte, apres validation du format editorial.
+4. Ajouter Instagram et generation d image apres stabilisation LinkedIn, X et Meta.
