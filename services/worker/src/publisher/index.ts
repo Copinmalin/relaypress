@@ -1,31 +1,120 @@
 import { randomUUID } from "node:crypto";
 import { workerConfig } from "../config.js";
 import { pool } from "../db.js";
-import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
-import type { ClaimedPublicationJob, PublicationPublisher } from "./types.js";
+import type {
+  ClaimedPublicationJob,
+  PlatformPublisherMode,
+  PublicationPublisher,
+  PublisherPlatform,
+  PublisherRoute,
+} from "./types.js";
 import { getPublisherErrorRawResponse } from "./types.js";
+import { createUnavailableRealPublisher } from "./unavailable-real-publisher.js";
 
 type PublicationRunResult = {
   runId: string;
   externalPostId: string;
 };
 
-const LINKEDIN_REAL_SAFETY_ACK = "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION";
+const PUBLISHER_PLATFORMS: PublisherPlatform[] = [
+  "linkedin",
+  "x",
+  "facebook",
+  "instagram",
+  "nostr_longform",
+];
 
-function selectPublisher(): PublicationPublisher {
-  if (workerConfig.publisherMode === "linkedin_real") {
-    if (workerConfig.publisherRealSafetyAck !== LINKEDIN_REAL_SAFETY_ACK) {
-      return createMockPublisher();
-    }
+const REAL_SAFETY_ACKS: Record<PublisherPlatform, string> = {
+  linkedin: "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION",
+  x: "I_UNDERSTAND_X_REAL_PUBLICATION",
+  facebook: "I_UNDERSTAND_META_REAL_PUBLICATION",
+  instagram: "I_UNDERSTAND_META_REAL_PUBLICATION",
+  nostr_longform: "I_UNDERSTAND_NOSTR_REAL_PUBLICATION",
+};
 
-    return createLinkedInPublisher();
-  }
+let legacyWarningLogged = false;
 
-  return createMockPublisher();
+function warnLegacyPublisherModeOnce(): void {
+  if (legacyWarningLogged || !process.env.PUBLISHER_MODE) return;
+  legacyWarningLogged = true;
+
+  console.warn(JSON.stringify({
+    service: "relaypress-worker",
+    component: "publisher-router",
+    status: "deprecated_config",
+    variable: "PUBLISHER_MODE",
+    replacement: [
+      "LINKEDIN_PUBLISHER_MODE",
+      "X_PUBLISHER_MODE",
+      "FACEBOOK_PUBLISHER_MODE",
+      "INSTAGRAM_PUBLISHER_MODE",
+      "NOSTR_PUBLISHER_MODE",
+    ],
+    legacyValue: workerConfig.legacyPublisherMode,
+    timestamp: new Date().toISOString(),
+  }));
 }
 
-async function claimApprovedJobs(publisher: PublicationPublisher): Promise<ClaimedPublicationJob[]> {
+function realPublisherReason(
+  platform: PublisherPlatform,
+  safetyAckConfigured: boolean,
+): string {
+  if (!safetyAckConfigured) {
+    return `${platform} real publisher requires its dedicated safety acknowledgement`;
+  }
+
+  return `${platform} real publisher is intentionally unavailable in PR X0`;
+}
+
+function buildPublisherRoute(
+  platform: PublisherPlatform,
+  configuredMode: PlatformPublisherMode,
+): PublisherRoute {
+  if (configuredMode === "disabled") {
+    return {
+      platform,
+      configuredMode,
+      safetyAckConfigured: false,
+      publisher: null,
+    };
+  }
+
+  if (configuredMode === "mock") {
+    return {
+      platform,
+      configuredMode,
+      safetyAckConfigured: false,
+      publisher: createMockPublisher(platform),
+    };
+  }
+
+  const safetyAckConfigured = workerConfig.publisherSafetyAcks[platform] === REAL_SAFETY_ACKS[platform];
+
+  return {
+    platform,
+    configuredMode,
+    safetyAckConfigured,
+    publisher: createUnavailableRealPublisher(
+      platform,
+      realPublisherReason(platform, safetyAckConfigured),
+    ),
+  };
+}
+
+export function buildPublisherRoutes(): PublisherRoute[] {
+  warnLegacyPublisherModeOnce();
+
+  return PUBLISHER_PLATFORMS.map((platform) =>
+    buildPublisherRoute(platform, workerConfig.publisherModes[platform]));
+}
+
+async function claimApprovedJobs(
+  platform: PublisherPlatform,
+  limit: number,
+): Promise<ClaimedPublicationJob[]> {
+  if (limit <= 0) return [];
+
   const result = await pool.query<ClaimedPublicationJob>(
     `
       update publication_jobs
@@ -38,14 +127,14 @@ async function claimApprovedJobs(publisher: PublicationPublisher): Promise<Claim
         where status = 'approved'
           and external_post_id is null
           and published_at is null
-          and platform = any($2::varchar[])
+          and platform = $2
         order by updated_at asc
         limit $1
         for update skip locked
       )
       returning id, platform, adapted_content
     `,
-    [workerConfig.publisherBatchSize, publisher.supportedPlatforms],
+    [limit, platform],
   );
 
   return result.rows;
@@ -205,25 +294,33 @@ async function markJobAsPublished(
   }
 }
 
-export async function processApprovedPublicationJobs(): Promise<number> {
-  const publisher = selectPublisher();
+async function processRoute(
+  route: PublisherRoute,
+  remainingBatchSize: number,
+): Promise<number> {
+  const publisher = route.publisher;
+  if (!publisher || remainingBatchSize <= 0) return 0;
+
   const readiness = await publisher.isReady();
 
   if (!readiness.ready) {
     console.warn(JSON.stringify({
       service: "relaypress-worker",
-      component: "publisher-orchestrator",
+      component: "publisher-router",
       status: "skipped",
       reason: readiness.reason ?? "publisher_not_ready",
-      publisherMode: workerConfig.publisherMode,
+      platform: route.platform,
+      configuredMode: route.configuredMode,
+      publisherMode: publisher.mode,
       publisherComponent: publisher.component,
+      safetyAckConfigured: route.safetyAckConfigured,
       timestamp: new Date().toISOString(),
     }));
 
     return 0;
   }
 
-  const jobs = await claimApprovedJobs(publisher);
+  const jobs = await claimApprovedJobs(route.platform, remainingBatchSize);
 
   for (const job of jobs) {
     try {
@@ -238,6 +335,7 @@ export async function processApprovedPublicationJobs(): Promise<number> {
         platform: job.platform,
         externalPostId: result.externalPostId,
         contentLength: job.adapted_content?.length ?? 0,
+        publisherMode: publisher.mode,
         timestamp: new Date().toISOString(),
       }));
     } catch (error) {
@@ -249,10 +347,24 @@ export async function processApprovedPublicationJobs(): Promise<number> {
         jobId: job.id,
         platform: job.platform,
         error: message,
+        publisherMode: publisher.mode,
         timestamp: new Date().toISOString(),
       }));
     }
   }
 
   return jobs.length;
+}
+
+export async function processApprovedPublicationJobs(): Promise<number> {
+  const routes = buildPublisherRoutes();
+  let processed = 0;
+
+  for (const route of routes) {
+    const remainingBatchSize = Math.max(workerConfig.publisherBatchSize - processed, 0);
+    if (remainingBatchSize === 0) break;
+    processed += await processRoute(route, remainingBatchSize);
+  }
+
+  return processed;
 }
