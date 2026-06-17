@@ -4,15 +4,17 @@ import { pool } from "../db.js";
 import type { ClaimedPublicationJob, PublicationPublisher, PublicationPublishResult } from "./types.js";
 import { PublisherPublishError } from "./types.js";
 
-const LINKEDIN_UGC_POSTS_PATH = "/ugcPosts";
+const LINKEDIN_POSTS_PATH = "/posts";
 const LINKEDIN_TOKEN_URL = "https://www.linkedin.com/oauth/v2/accessToken";
 const LINKEDIN_REFRESH_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const REQUIRED_LINKEDIN_SCOPE = "w_member_social";
 
 type LinkedInErrorResponse = {
   message?: unknown;
   serviceErrorCode?: unknown;
   status?: unknown;
   code?: unknown;
+  id?: unknown;
 };
 
 type LinkedInTokenResponse = {
@@ -23,9 +25,17 @@ type LinkedInTokenResponse = {
   scope?: unknown;
 };
 
+type LinkedInUserInfo = {
+  sub?: unknown;
+  name?: unknown;
+  email?: unknown;
+};
+
 type DatabaseLinkedInAccount = {
   id: string;
+  provider: string;
   account_urn: string;
+  status: string;
   encrypted_access_token: string;
   encrypted_refresh_token: string | null;
   token_expires_at: Date | null;
@@ -34,18 +44,27 @@ type DatabaseLinkedInAccount = {
 };
 
 type LinkedInCredentials = {
-  source: "publisher_accounts" | "env";
+  source: "publisher_accounts";
   authorUrn: string;
   accessToken: string;
-  accountId?: string;
-  refreshed?: boolean;
+  accountId: string;
+  refreshed: boolean;
+  scopes: string[];
 };
 
-let cachedCredentials: LinkedInCredentials | null = null;
+type LinkedInPublisherOptions = {
+  allowedJobId?: string;
+};
 
 function requireLinkedInPlatform(job: ClaimedPublicationJob): void {
   if (job.platform !== "linkedin") {
     throw new Error(`LinkedIn publisher cannot publish platform: ${job.platform}`);
+  }
+}
+
+function requireAllowedJob(job: ClaimedPublicationJob, allowedJobId: string | undefined): void {
+  if (!allowedJobId || job.id !== allowedJobId) {
+    throw new Error("LinkedIn real publisher rejected a job outside the explicit allowlist");
   }
 }
 
@@ -62,44 +81,46 @@ function requireContent(job: ClaimedPublicationJob): string {
 function buildLinkedInPostPayload(authorUrn: string, content: string): Record<string, unknown> {
   return {
     author: authorUrn,
+    commentary: content,
+    visibility: "PUBLIC",
+    distribution: {
+      feedDistribution: "MAIN_FEED",
+      targetEntities: [],
+      thirdPartyDistributionChannels: [],
+    },
     lifecycleState: "PUBLISHED",
-    specificContent: {
-      "com.linkedin.ugc.ShareContent": {
-        shareCommentary: {
-          text: content,
-        },
-        shareMediaCategory: "NONE",
-      },
-    },
-    visibility: {
-      "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-    },
+    isReshareDisabledByAuthor: false,
   };
 }
 
-function sanitizeLinkedInError(payload: LinkedInErrorResponse | string): Record<string, unknown> {
+function sanitizeLinkedInPayload(payload: unknown): Record<string, unknown> {
   if (typeof payload === "string") {
-    return {
-      message: payload.slice(0, 1_000),
-    };
+    return { message: payload.slice(0, 1_000) };
   }
 
+  if (!payload || typeof payload !== "object") {
+    return { message: "Unknown LinkedIn response" };
+  }
+
+  const record = payload as LinkedInErrorResponse;
   return {
-    message: typeof payload.message === "string" ? payload.message.slice(0, 1_000) : undefined,
-    serviceErrorCode: payload.serviceErrorCode,
-    status: payload.status,
-    code: payload.code,
+    message: typeof record.message === "string" ? record.message.slice(0, 1_000) : undefined,
+    serviceErrorCode: record.serviceErrorCode,
+    status: record.status,
+    code: record.code,
+    id: typeof record.id === "string" ? record.id : undefined,
   };
 }
 
-function extractExternalPostId(response: Response): string {
-  const createdEntity = response.headers.get("x-restli-id");
+async function readResponsePayload(response: Response): Promise<unknown> {
+  const body = await response.text();
+  if (!body) return {};
 
-  if (createdEntity) {
-    return `linkedin:${createdEntity}`;
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    return body;
   }
-
-  return `linkedin:ugcPosts:${Date.now()}`;
 }
 
 function getRequiredLinkedInClientEnv(name: "LINKEDIN_CLIENT_ID" | "LINKEDIN_CLIENT_SECRET"): string {
@@ -118,34 +139,28 @@ function parseScopes(value: unknown, fallback: string[]): string[] {
   return [...new Set(value.split(/[ ,]+/).map((scope) => scope.trim()).filter(Boolean))].sort();
 }
 
-async function readLinkedInError(response: Response): Promise<Record<string, unknown>> {
-  const body = await response.text();
+function hasRequiredScope(scopes: string[]): boolean {
+  return scopes.includes(REQUIRED_LINKEDIN_SCOPE);
+}
 
-  if (!body) {
-    return {
-      message: response.statusText,
-      status: response.status,
-    };
-  }
-
-  try {
-    return sanitizeLinkedInError(JSON.parse(body) as LinkedInErrorResponse);
-  } catch {
-    return sanitizeLinkedInError(body);
-  }
+async function markAccountStatus(accountId: string, status: string): Promise<void> {
+  await pool.query(
+    `
+      update publisher_accounts
+      set status = $2, last_validated_at = now(), updated_at = now()
+      where id = $1
+    `,
+    [accountId, status],
+  );
 }
 
 async function refreshDatabaseLinkedInAccount(account: DatabaseLinkedInAccount): Promise<LinkedInCredentials | null> {
-  if (!shouldRefresh(account)) {
-    return null;
-  }
-
-  if (!account.encrypted_refresh_token) {
+  if (!shouldRefresh(account) || !account.encrypted_refresh_token) {
     return null;
   }
 
   if (account.refresh_token_expires_at && account.refresh_token_expires_at.getTime() <= Date.now()) {
-    await pool.query("update publisher_accounts set status = 'expired', updated_at = now() where id = $1", [account.id]);
+    await markAccountStatus(account.id, "expired");
     return null;
   }
 
@@ -165,21 +180,30 @@ async function refreshDatabaseLinkedInAccount(account: DatabaseLinkedInAccount):
   const payload = await response.json().catch(() => ({})) as LinkedInTokenResponse;
 
   if (!response.ok) {
-    const message = typeof (payload as { message?: unknown }).message === "string" ? (payload as { message: string }).message : response.statusText;
+    const message = typeof (payload as { message?: unknown }).message === "string"
+      ? (payload as { message: string }).message
+      : response.statusText;
     throw new Error(`LinkedIn refresh failed: ${message}`);
   }
 
   if (typeof payload.access_token !== "string") {
-    throw new Error("LinkedIn refresh response did not include a publish credential");
+    throw new Error("LinkedIn refresh response did not include an access token");
   }
 
   const accessToken = payload.access_token;
   const refreshToken = typeof payload.refresh_token === "string" ? payload.refresh_token : null;
-  const tokenExpiresAt = typeof payload.expires_in === "number" ? new Date(Date.now() + payload.expires_in * 1000) : account.token_expires_at;
+  const tokenExpiresAt = typeof payload.expires_in === "number"
+    ? new Date(Date.now() + payload.expires_in * 1000)
+    : account.token_expires_at;
   const refreshTokenExpiresAt = refreshToken && typeof payload.refresh_token_expires_in === "number"
     ? new Date(Date.now() + payload.refresh_token_expires_in * 1000)
     : account.refresh_token_expires_at;
   const scopes = parseScopes(payload.scope, account.scopes);
+
+  if (!hasRequiredScope(scopes)) {
+    await markAccountStatus(account.id, "invalid");
+    throw new Error(`LinkedIn account is missing required scope: ${REQUIRED_LINKEDIN_SCOPE}`);
+  }
 
   await pool.query(
     `
@@ -211,83 +235,134 @@ async function refreshDatabaseLinkedInAccount(account: DatabaseLinkedInAccount):
     authorUrn: account.account_urn,
     accessToken,
     refreshed: true,
+    scopes,
   };
 }
 
-async function loadLinkedInCredentialsFromDatabase(): Promise<LinkedInCredentials | null> {
+async function findConfiguredLinkedInAccount(): Promise<DatabaseLinkedInAccount | null> {
+  if (!workerConfig.linkedinPublisherAccountId) return null;
+
   const result = await pool.query<DatabaseLinkedInAccount>(
     `
       select
         id,
+        provider,
         account_urn,
+        status,
         encrypted_access_token,
         encrypted_refresh_token,
         token_expires_at,
         refresh_token_expires_at,
         scopes
       from publisher_accounts
-      where provider = 'linkedin'
-        and status = 'connected'
-        and encrypted_access_token is not null
-      order by updated_at desc
+      where id = $1
       limit 1
     `,
+    [workerConfig.linkedinPublisherAccountId],
   );
 
-  const row = result.rows[0];
-  if (!row) return null;
+  return result.rows[0] ?? null;
+}
 
-  const refreshedCredentials = await refreshDatabaseLinkedInAccount(row);
+async function loadLinkedInCredentials(): Promise<LinkedInCredentials | null> {
+  const account = await findConfiguredLinkedInAccount();
+  if (!account) return null;
+
+  if (account.provider !== "linkedin") {
+    throw new Error("Configured publisher account is not a LinkedIn account");
+  }
+
+  if (account.status !== "connected") {
+    throw new Error(`Configured LinkedIn account is not connected: ${account.status}`);
+  }
+
+  if (!account.account_urn.startsWith("urn:li:person:")) {
+    throw new Error("PR X1 supports LinkedIn member publishing only");
+  }
+
+  if (!hasRequiredScope(account.scopes)) {
+    throw new Error(`LinkedIn account is missing required scope: ${REQUIRED_LINKEDIN_SCOPE}`);
+  }
+
+  const refreshedCredentials = await refreshDatabaseLinkedInAccount(account);
   if (refreshedCredentials) return refreshedCredentials;
 
-  if (row.token_expires_at && row.token_expires_at.getTime() <= Date.now()) {
-    await pool.query("update publisher_accounts set status = 'expired', updated_at = now() where id = $1", [row.id]);
+  if (account.token_expires_at && account.token_expires_at.getTime() <= Date.now()) {
+    await markAccountStatus(account.id, "expired");
     return null;
   }
 
   return {
     source: "publisher_accounts",
-    accountId: row.id,
-    authorUrn: row.account_urn,
-    accessToken: decryptSecret(row.encrypted_access_token),
+    accountId: account.id,
+    authorUrn: account.account_urn,
+    accessToken: decryptSecret(account.encrypted_access_token),
     refreshed: false,
+    scopes: account.scopes,
   };
 }
 
-async function loadLinkedInCredentials(options: { forceReload?: boolean } = {}): Promise<LinkedInCredentials | null> {
-  if (cachedCredentials && !options.forceReload) return cachedCredentials;
+async function probeLinkedInCredentials(credentials: LinkedInCredentials): Promise<void> {
+  const response = await fetch(workerConfig.linkedinUserInfoUrl, {
+    headers: {
+      Authorization: `Bearer ${credentials.accessToken}`,
+    },
+  });
+  const payload = await readResponsePayload(response);
 
-  const databaseCredentials = await loadLinkedInCredentialsFromDatabase();
+  if (!response.ok) {
+    if (response.status === 401 || response.status === 403) {
+      await markAccountStatus(credentials.accountId, "invalid");
+    }
 
-  if (databaseCredentials) {
-    cachedCredentials = databaseCredentials;
-    return cachedCredentials;
+    const safePayload = sanitizeLinkedInPayload(payload);
+    const message = typeof safePayload.message === "string" ? safePayload.message : response.statusText;
+    throw new Error(`LinkedIn connection check failed ${response.status}: ${message}`);
   }
 
-  if (workerConfig.linkedinAccessToken && workerConfig.linkedinAuthorUrn) {
-    cachedCredentials = {
-      source: "env",
-      authorUrn: workerConfig.linkedinAuthorUrn,
-      accessToken: workerConfig.linkedinAccessToken,
-      refreshed: false,
-    };
-    return cachedCredentials;
+  const userInfo = payload as LinkedInUserInfo;
+  const subject = typeof userInfo.sub === "string" ? userInfo.sub : null;
+  const expectedUrn = subject ? `urn:li:person:${subject}` : null;
+
+  if (!expectedUrn || expectedUrn !== credentials.authorUrn) {
+    await markAccountStatus(credentials.accountId, "invalid");
+    throw new Error("LinkedIn userinfo subject does not match configured account URN");
+  }
+
+  await markAccountStatus(credentials.accountId, "connected");
+}
+
+function extractLinkedInPostId(response: Response, payload: unknown): string | null {
+  const headerId = response.headers.get("x-restli-id")?.trim();
+  if (headerId) return headerId;
+
+  if (payload && typeof payload === "object") {
+    const id = (payload as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim()) return id.trim();
   }
 
   return null;
 }
 
-async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<PublicationPublishResult> {
+async function publishLinkedInPost(
+  job: ClaimedPublicationJob,
+  allowedJobId: string | undefined,
+  validatedCredentials: LinkedInCredentials | null,
+): Promise<PublicationPublishResult> {
   requireLinkedInPlatform(job);
+  requireAllowedJob(job, allowedJobId);
 
-  const credentials = await loadLinkedInCredentials({ forceReload: true });
-
+  const credentials = validatedCredentials ?? await loadLinkedInCredentials();
   if (!credentials) {
-    throw new Error("LinkedIn publisher credentials are not configured");
+    throw new Error("LinkedIn publisher credentials are not configured or have expired");
+  }
+
+  if (!validatedCredentials) {
+    await probeLinkedInCredentials(credentials);
   }
 
   const content = requireContent(job);
-  const url = `${workerConfig.linkedinApiBaseUrl}${LINKEDIN_UGC_POSTS_PATH}`;
+  const url = `${workerConfig.linkedinApiBaseUrl}${LINKEDIN_POSTS_PATH}`;
   const payload = buildLinkedInPostPayload(credentials.authorUrn, content);
 
   const response = await fetch(url, {
@@ -296,12 +371,14 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
       Authorization: `Bearer ${credentials.accessToken}`,
       "Content-Type": "application/json",
       "X-Restli-Protocol-Version": "2.0.0",
+      "Linkedin-Version": workerConfig.linkedinApiVersion,
     },
     body: JSON.stringify(payload),
   });
+  const responsePayload = await readResponsePayload(response);
 
   if (!response.ok) {
-    const errorPayload = await readLinkedInError(response);
+    const errorPayload = sanitizeLinkedInPayload(responsePayload);
     const message = `LinkedIn API error ${response.status}: ${
       typeof errorPayload.message === "string" ? errorPayload.message : response.statusText
     }`;
@@ -309,7 +386,8 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
     throw new PublisherPublishError(message, {
       ok: false,
       provider: "linkedin",
-      endpoint: LINKEDIN_UGC_POSTS_PATH,
+      endpoint: LINKEDIN_POSTS_PATH,
+      apiVersion: workerConfig.linkedinApiVersion,
       status: response.status,
       statusText: response.statusText,
       error: errorPayload,
@@ -320,14 +398,27 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
     });
   }
 
-  const externalPostId = extractExternalPostId(response);
+  const externalPostId = extractLinkedInPostId(response, responsePayload);
+  if (!externalPostId) {
+    throw new PublisherPublishError("LinkedIn post creation response did not include x-restli-id", {
+      ok: false,
+      provider: "linkedin",
+      endpoint: LINKEDIN_POSTS_PATH,
+      apiVersion: workerConfig.linkedinApiVersion,
+      status: response.status,
+      contentLength: content.length,
+      accountId: credentials.accountId,
+      postMayHaveBeenCreated: true,
+    });
+  }
 
   return {
     externalPostId,
     rawResponse: {
       ok: true,
       provider: "linkedin",
-      endpoint: LINKEDIN_UGC_POSTS_PATH,
+      endpoint: LINKEDIN_POSTS_PATH,
+      apiVersion: workerConfig.linkedinApiVersion,
       status: response.status,
       externalPostId,
       contentLength: content.length,
@@ -338,25 +429,35 @@ async function publishLinkedInPost(job: ClaimedPublicationJob): Promise<Publicat
   };
 }
 
-export function createLinkedInPublisher(): PublicationPublisher {
+export function createLinkedInPublisher(options: LinkedInPublisherOptions = {}): PublicationPublisher {
+  let validatedCredentials: LinkedInCredentials | null = null;
+
   return {
-    mode: "linkedin_real",
+    platform: "linkedin",
+    mode: "real",
     component: "linkedin-publisher",
-    supportedPlatforms: ["linkedin"],
+    maxJobsPerTick: 1,
+    allowedJobId: options.allowedJobId,
     isReady: async () => {
       try {
-        const credentials = await loadLinkedInCredentials({ forceReload: true });
-
-        if (!credentials) {
-          return { ready: false, reason: "LinkedIn credentials are not configured" };
+        if (!options.allowedJobId) {
+          return { ready: false, reason: "LinkedIn real allowed job ID is not configured" };
         }
 
+        const credentials = await loadLinkedInCredentials();
+        if (!credentials) {
+          return { ready: false, reason: "LinkedIn credentials are not configured or have expired" };
+        }
+
+        await probeLinkedInCredentials(credentials);
+        validatedCredentials = credentials;
         return { ready: true };
       } catch (error) {
+        validatedCredentials = null;
         const message = error instanceof Error ? error.message : String(error);
         return { ready: false, reason: message };
       }
     },
-    publish: publishLinkedInPost,
+    publish: async (job) => publishLinkedInPost(job, options.allowedJobId, validatedCredentials),
   };
 }
