@@ -45,6 +45,22 @@ trap cleanup EXIT
 
 docker compose stop worker >/dev/null
 
+# Avoid touching pre-existing approved jobs. The smoke test is intentionally
+# isolated and refuses to run until the staging review queue is clear.
+docker compose exec -T api node <<'NODE'
+const base = "http://127.0.0.1:3000";
+const token = process.env.ADMIN_API_TOKEN;
+const response = await fetch(`${base}/publication-jobs?status=approved&limit=100`, {
+  headers: { Authorization: `Bearer ${token}` },
+});
+const payload = await response.json();
+if (!response.ok) throw new Error(JSON.stringify(payload));
+if (payload.count > 0) {
+  throw new Error(`PR X0 smoke requires zero pre-existing approved jobs, found ${payload.count}`);
+}
+console.log("APPROVED_QUEUE_EMPTY=OK");
+NODE
+
 # Create one approved job per platform. The running worker is stopped so the smoke
 # test can control exactly which publisher registry claims each job.
 docker compose exec -T api node <<'NODE' > "$TMP_FILE"
@@ -113,10 +129,11 @@ grep -q '"platform": "facebook"' <<< "$MOCK_RUN_OUTPUT"
 grep -q '"platform": "instagram"' <<< "$MOCK_RUN_OUTPUT"
 grep -q '"platform": "nostr_longform"' <<< "$MOCK_RUN_OUTPUT"
 grep -q '"requestedMode": "mock"' <<< "$MOCK_RUN_OUTPUT"
-grep -q 'real_publisher_not_enabled_in_pr_x0' <<< "$MOCK_RUN_OUTPUT" && {
+
+if grep -q 'real_publisher_not_enabled_in_pr_x0' <<< "$MOCK_RUN_OUTPUT"; then
   echo "Unexpected blocked real route during the mock phase" >&2
   exit 1
-} || true
+fi
 
 JOB_SPEC="$(awk -F '\t' 'NF == 2 { printf "%s:%s,", $1, $2 }' "$TMP_FILE")"
 
