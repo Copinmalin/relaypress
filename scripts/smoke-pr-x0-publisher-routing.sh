@@ -99,6 +99,7 @@ NODE
 MOCK_RUN_OUTPUT="$(
   docker compose run --rm -T --no-deps \
     -e SOURCE_INGESTION_ENABLED=false \
+    -e PUBLISHER_BATCH_SIZE=10 \
     -e PUBLISHER_MODE=linkedin_real \
     -e LINKEDIN_PUBLISHER_MODE=mock \
     -e X_PUBLISHER_MODE=mock \
@@ -216,6 +217,7 @@ NODE
 BLOCKED_RUN_OUTPUT="$(
   docker compose run --rm -T --no-deps \
     -e SOURCE_INGESTION_ENABLED=false \
+    -e PUBLISHER_BATCH_SIZE=10 \
     -e LINKEDIN_PUBLISHER_MODE=disabled \
     -e X_PUBLISHER_MODE=real \
     -e FACEBOOK_PUBLISHER_MODE=disabled \
