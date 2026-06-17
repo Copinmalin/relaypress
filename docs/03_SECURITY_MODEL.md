@@ -14,6 +14,7 @@ RelayPress manipule des éléments sensibles : identité Nostr, tokens OAuth, ca
 - Empêcher toute republication accidentelle d’un job déjà publié.
 - Configurer chaque publisher séparément.
 - Garder chaque plateforme en `mock` ou `disabled` tant que son publisher réel n’est pas durci.
+- Toute publication réelle exige une validation humaine explicite.
 
 ## Nostr
 
@@ -64,25 +65,28 @@ Les connexions aux plateformes externes doivent prévoir :
 - absence de token dans les logs ;
 - absence de token dans `raw_response`.
 
-Le modèle cible est une table `publisher_accounts` contenant au minimum :
+La table `publisher_accounts` contient notamment :
 
 ```txt
 provider
 account_urn
 display_name
+status
 encrypted_access_token
 encrypted_refresh_token
 token_expires_at
+refresh_token_expires_at
 scopes
+last_validated_at
 created_at
 updated_at
 ```
 
-Le chiffrement doit utiliser `TOKEN_ENCRYPTION_KEY` ou un mécanisme équivalent suffisamment durci.
+Le chiffrement utilise `TOKEN_ENCRYPTION_KEY`.
 
 ## Routage multi-publishers
 
-PR X0 remplace le sélecteur global par un mode propre à chaque plateforme :
+Chaque plateforme possède son propre mode :
 
 ```txt
 LINKEDIN_PUBLISHER_MODE
@@ -92,26 +96,121 @@ INSTAGRAM_PUBLISHER_MODE
 NOSTR_PUBLISHER_MODE
 ```
 
-Modes autorisés dans PR X0 :
-
-```txt
-mock
-disabled
-```
-
-Toute valeur `real` ou inconnue est convertie en `disabled` avec une raison explicite dans les logs.
-
 Le paramètre historique :
 
 ```txt
 PUBLISHER_MODE
 ```
 
-est seulement conservé pour visibilité de migration. Il ne peut plus armer de publication réelle.
+est seulement conservé pour visibilité de migration. Il ne peut pas armer de publication réelle.
+
+## LinkedIn réel contrôlé
+
+PR X1 autorise `real` uniquement pour LinkedIn.
+
+Les quatre verrous suivants sont simultanément obligatoires :
+
+```txt
+LINKEDIN_PUBLISHER_MODE=real
+LINKEDIN_REAL_SAFETY_ACK=I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION
+LINKEDIN_PUBLISHER_ACCOUNT_ID=<id interne exact>
+LINKEDIN_REAL_ALLOWED_JOB_ID=<id exact du job approuvé>
+```
+
+Sans l’un de ces éléments, le routeur produit :
+
+```txt
+effectiveMode=disabled
+```
+
+avec une raison explicite, sans réclamer de job.
+
+### Allowlist du job
+
+Le publisher LinkedIn réel :
+
+- réclame uniquement `LINKEDIN_REAL_ALLOWED_JOB_ID` ;
+- publie au maximum un job par tick ;
+- refuse aussi le job dans `publish()` si son ID ne correspond pas ;
+- laisse tous les autres jobs LinkedIn en `approved`.
+
+Cette double vérification protège contre une erreur de requête ou de routage.
+
+### Sélection du compte
+
+Le compte est sélectionné uniquement par :
+
+```txt
+LINKEDIN_PUBLISHER_ACCOUNT_ID
+```
+
+Aucune sélection implicite du dernier compte n’est autorisée.
+
+Le publisher exige :
+
+- `provider = linkedin` ;
+- `status = connected` ;
+- une URN membre `urn:li:person:...` ;
+- le scope `w_member_social` ;
+- un access token chiffré non expiré ;
+- un `userinfo.sub` correspondant à l’URN du compte.
+
+Les variables historiques :
+
+```txt
+LINKEDIN_ACCESS_TOKEN
+LINKEDIN_AUTHOR_URN
+```
+
+ne sont pas utilisées pour armer le publisher réel PR X1.
+
+### API LinkedIn
+
+PR X1 utilise :
+
+```txt
+POST https://api.linkedin.com/rest/posts
+Linkedin-Version: 202606
+X-Restli-Protocol-Version: 2.0.0
+```
+
+Le payload texte contient uniquement :
+
+```txt
+author
+commentary
+visibility
+distribution
+lifecycleState
+isReshareDisabledByAuthor
+```
+
+Le publisher récupère `x-restli-id` comme `external_post_id`.
+
+Si LinkedIn répond 201 sans identifiant, le run indique :
+
+```txt
+postMayHaveBeenCreated=true
+```
+
+Le job ne doit pas être relancé automatiquement. Une vérification humaine est obligatoire pour éviter un doublon.
+
+### Heartbeat et expiration
+
+Avant claim, `isReady()` :
+
+1. charge le compte chiffré exact ;
+2. rafraîchit l’access token si un refresh token valide est disponible et nécessaire ;
+3. appelle `userinfo` ;
+4. vérifie la concordance du sujet ;
+5. marque le compte `invalid` sur 401/403 ou mismatch ;
+6. refuse le claim si le compte n’est pas prêt.
+
+Les refresh tokens programmatiques ne sont pas supposés disponibles pour toutes les applications. En leur absence, une nouvelle OAuth est nécessaire avant expiration de l’access token.
 
 ## Safety acknowledgements par plateforme
 
-Les futures activations réelles utiliseront des verrous séparés :
+Les verrous séparés sont :
 
 ```txt
 LINKEDIN_REAL_SAFETY_ACK
@@ -120,29 +219,16 @@ META_REAL_SAFETY_ACK
 NOSTR_REAL_SAFETY_ACK
 ```
 
-PR X0 ne consomme pas ces valeurs pour publier. Le worker journalise seulement un booléen `safetyAckConfigured`, jamais leur contenu.
+Seul le verrou LinkedIn est actif dans PR X1. X, Meta, Instagram et Nostr restent bloqués en mode `real`.
 
-Une activation réelle devra exiger simultanément :
-
-1. mode réel de la plateforme ;
-2. safety ack exact de la plateforme ;
-3. credentials valides ;
-4. readiness check positif ;
-5. job explicitement `approved` ;
-6. runbook de test et rollback.
-
-## LinkedIn réel
-
-Le code du publisher LinkedIn réel reste présent mais n’est pas sélectionnable par le routeur PR X0.
-
-La future PR LinkedIn devra utiliser :
+Les logs n’affichent jamais le contenu d’un safety ack. Ils exposent seulement :
 
 ```txt
-LINKEDIN_PUBLISHER_MODE=real
-LINKEDIN_REAL_SAFETY_ACK=<valeur attendue>
+safetyAckConfigured
+safetyAckValid
+accountConfigured
+allowedJobIdConfigured
 ```
-
-et ne devra réclamer aucun job si les credentials, scopes ou contrôles de sécurité ne sont pas valides.
 
 ## IA
 
@@ -170,9 +256,10 @@ RelayPress doit éviter :
 - la publication si OAuth est expiré ;
 - la publication si le contenu dépasse les contraintes de plateforme ;
 - la publication réelle sans validation explicite ;
-- le claim d’un job appartenant à une plateforme `disabled`.
+- le claim d’un job appartenant à une plateforme `disabled` ;
+- le claim d’un job LinkedIn réel qui n’est pas explicitement allowlisté.
 
-Le worker doit publier uniquement les jobs :
+Le worker publie uniquement les jobs :
 
 ```txt
 status = approved
@@ -180,13 +267,14 @@ external_post_id is null
 published_at is null
 platform présente dans le registry
 publisher de la plateforme ready
+contraintes du publisher satisfaites
 ```
 
 ## Archivage
 
 L’archivage est non destructif.
 
-Un job archivé doit rester conservé avec ses runs pour audit. Il est seulement masqué des vues actives.
+Un job archivé reste conservé avec ses runs pour audit. Il est seulement masqué des vues actives.
 
 ## Secrets et logs
 
@@ -198,14 +286,17 @@ Les logs peuvent contenir :
 - plateforme ;
 - mode demandé ;
 - mode effectif ;
-- booléen de présence du safety ack ;
+- booléens des garde-fous ;
+- account ID interne ;
 - longueur de contenu ;
+- version API ;
 - erreur métier ou API nettoyée.
 
 Les logs ne doivent pas contenir :
 
 - access token ;
 - refresh token ;
+- client secret ;
 - contenu du safety ack ;
 - `nsec` ;
 - secret de session ;
