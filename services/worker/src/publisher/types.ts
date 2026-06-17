@@ -1,6 +1,10 @@
+export type PublisherPlatform = "linkedin" | "x" | "facebook" | "instagram" | "nostr_longform";
+
+export type PlatformPublisherMode = "disabled" | "mock" | "real";
+
 export type ClaimedPublicationJob = {
   id: string;
-  platform: string;
+  platform: PublisherPlatform;
   adapted_content: string | null;
 };
 
@@ -35,7 +39,14 @@ export function getPublisherErrorRawResponse(error: unknown): Record<string, unk
 export type PublicationPublisher = {
   mode: string;
   component: string;
-  supportedPlatforms: string[];
+  supportedPlatforms: PublisherPlatform[];
   isReady: () => Promise<PublisherReadiness>;
   publish: (job: ClaimedPublicationJob) => Promise<PublicationPublishResult>;
+};
+
+export type PublisherRoute = {
+  platform: PublisherPlatform;
+  configuredMode: PlatformPublisherMode;
+  safetyAckConfigured: boolean;
+  publisher: PublicationPublisher | null;
 };
