@@ -12,7 +12,62 @@ RelayPress manipule des éléments sensibles : identité Nostr, tokens OAuth, ca
 - Séparer l’intention, la validation et l’exécution.
 - Journaliser les actions sans exposer les secrets.
 - Empêcher toute republication accidentelle d’un job déjà publié.
-- Garder `PUBLISHER_MODE=mock` par défaut tant que les publishers réels ne sont pas durcis.
+- Garder chaque publisher en `mock` ou `disabled` par défaut tant que son mode réel n’est pas durci.
+- Ne jamais utiliser un interrupteur générique pour armer plusieurs plateformes réelles.
+
+## Routage multi-publishers
+
+Le worker route les jobs approuvés selon leur plateforme :
+
+```txt
+linkedin
+x
+facebook
+instagram
+nostr_longform
+```
+
+Chaque plateforme possède un mode indépendant :
+
+```txt
+disabled
+mock
+real
+```
+
+Variables de configuration :
+
+```txt
+LINKEDIN_PUBLISHER_MODE
+X_PUBLISHER_MODE
+FACEBOOK_PUBLISHER_MODE
+INSTAGRAM_PUBLISHER_MODE
+NOSTR_PUBLISHER_MODE
+```
+
+Règles :
+
+- `disabled` : aucun publisher, aucun claim ;
+- `mock` : publication simulée et auditée ;
+- `real` : nécessite un publisher dédié, une readiness valide et son safety ack propre ;
+- un publisher non prêt ne doit jamais réclamer de job ;
+- un job approuvé sur une plateforme désactivée reste approuvé ;
+- `PUBLISHER_MODE` est conservé uniquement comme compatibilité transitoire et doit être retiré après migration.
+
+Dans PR X0, tous les modes réels sont volontairement bloqués. Même avec un safety ack correct, aucun appel réseau réel n’est effectué.
+
+## Safety acknowledgements
+
+Chaque famille de publisher réel possède son propre acknowledgement :
+
+```txt
+LINKEDIN_REAL_SAFETY_ACK
+X_REAL_SAFETY_ACK
+META_REAL_SAFETY_ACK
+NOSTR_REAL_SAFETY_ACK
+```
+
+Un acknowledgement ne doit jamais armer une autre plateforme.
 
 ## Nostr
 
@@ -81,24 +136,25 @@ Le chiffrement doit utiliser `TOKEN_ENCRYPTION_KEY` ou un mécanisme équivalent
 
 ## LinkedIn réel
 
-Le publisher LinkedIn réel est préparé mais non actif.
+Le publisher LinkedIn réel existe dans le code historique mais ne doit pas être routé en PR X0.
 
-Le mode :
+La future activation devra utiliser :
 
 ```txt
-PUBLISHER_MODE=linkedin_real
+LINKEDIN_PUBLISHER_MODE=real
+LINKEDIN_REAL_SAFETY_ACK=<valeur documentée dans le runbook LinkedIn>
 ```
 
-ne doit être activé qu’après :
+Elle ne devra être possible qu’après :
 
 1. validation du mode d’auth LinkedIn ;
-2. définition exacte de `LINKEDIN_AUTHOR_URN` ;
-3. token contrôlé ;
+2. définition exacte du compte auteur ;
+3. token contrôlé et chiffré ;
 4. gestion des erreurs API ;
 5. audit dans `publication_job_runs` ;
-6. vérification que le worker ne claim pas de jobs si le publisher n’est pas prêt.
-
-Si `LINKEDIN_ACCESS_TOKEN` ou `LINKEDIN_AUTHOR_URN` manque, le worker doit skip sans claim.
+6. vérification que le worker ne claim pas de jobs si le publisher n’est pas prêt ;
+7. test réel limité à un seul job ;
+8. rollback immédiat vers `mock`.
 
 ## IA
 
@@ -133,7 +189,8 @@ Le worker doit publier uniquement les jobs :
 status = approved
 external_post_id is null
 published_at is null
-platform compatible avec le publisher actif
+platform compatible avec le publisher routé
+publisher prêt avant claim
 ```
 
 ## Archivage
@@ -150,6 +207,7 @@ Les logs peuvent contenir :
 - statut ;
 - job ID ;
 - plateforme ;
+- mode publisher ;
 - longueur de contenu ;
 - erreur métier ou API nettoyée.
 
@@ -160,4 +218,5 @@ Les logs ne doivent pas contenir :
 - `nsec` ;
 - secret de session ;
 - token admin ;
+- safety ack ;
 - payload API contenant des secrets.
