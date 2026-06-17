@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { workerConfig, type PublisherRouteConfig } from "../config.js";
 import { pool } from "../db.js";
 import { createDisabledPublisher } from "./disabled-publisher.js";
+import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
 import type {
   ClaimedPublicationJob,
@@ -23,12 +24,19 @@ type PublisherRoutingEntry = {
   effectiveMode: string;
   component: string;
   safetyAckConfigured: boolean;
+  safetyAckValid: boolean;
+  accountConfigured: boolean;
+  allowedJobIdConfigured: boolean;
   reason?: string;
 };
 
 function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
   if (route.effectiveMode === "mock") {
     return createMockPublisher(route.platform);
+  }
+
+  if (route.effectiveMode === "real" && route.platform === "linkedin") {
+    return createLinkedInPublisher({ allowedJobId: route.allowedJobId });
   }
 
   return createDisabledPublisher(
@@ -57,6 +65,9 @@ export function describePublisherRouting(): PublisherRoutingEntry[] {
       effectiveMode: route.effectiveMode,
       component: publisher.component,
       safetyAckConfigured: route.safetyAckConfigured,
+      safetyAckValid: route.safetyAckValid,
+      accountConfigured: route.accountConfigured,
+      allowedJobIdConfigured: route.allowedJobIdConfigured,
       reason: route.reason,
     };
   });
@@ -88,8 +99,11 @@ async function getReadyPublishers(registry: PublisherRegistry): Promise<Publishe
   return ready;
 }
 
-async function claimApprovedJobs(platforms: PublisherPlatform[]): Promise<ClaimedPublicationJob[]> {
-  if (platforms.length === 0) return [];
+async function claimApprovedJobsForPublisher(
+  publisher: PublicationPublisher,
+  limit: number,
+): Promise<ClaimedPublicationJob[]> {
+  if (!publisher.platform || limit <= 0) return [];
 
   const result = await pool.query<ClaimedPublicationJob>(
     `
@@ -103,17 +117,38 @@ async function claimApprovedJobs(platforms: PublisherPlatform[]): Promise<Claime
         where status = 'approved'
           and external_post_id is null
           and published_at is null
-          and platform = any($2::varchar[])
+          and platform = $2
+          and ($3::varchar is null or id = $3)
         order by updated_at asc
         limit $1
         for update skip locked
       )
       returning id, platform, adapted_content
     `,
-    [workerConfig.publisherBatchSize, platforms],
+    [limit, publisher.platform, publisher.allowedJobId ?? null],
   );
 
   return result.rows;
+}
+
+async function claimApprovedJobs(registry: PublisherRegistry): Promise<ClaimedPublicationJob[]> {
+  const jobs: ClaimedPublicationJob[] = [];
+  let remaining = workerConfig.publisherBatchSize;
+
+  for (const publisher of registry.values()) {
+    if (remaining <= 0) break;
+
+    const publisherLimit = Math.max(1, Math.trunc(publisher.maxJobsPerTick ?? remaining));
+    const claimed = await claimApprovedJobsForPublisher(
+      publisher,
+      Math.min(remaining, publisherLimit),
+    );
+
+    jobs.push(...claimed);
+    remaining -= claimed.length;
+  }
+
+  return jobs;
 }
 
 async function createStartedRun(job: ClaimedPublicationJob, publisher: PublicationPublisher): Promise<string> {
@@ -140,6 +175,7 @@ async function createStartedRun(job: ClaimedPublicationJob, publisher: Publicati
         component: publisher.component,
         routedPlatform: job.platform,
         contentLength: job.adapted_content?.length ?? 0,
+        constrainedToSingleJob: Boolean(publisher.allowedJobId),
       },
     ],
   );
@@ -274,7 +310,7 @@ async function markJobAsPublished(
 export async function processApprovedPublicationJobs(): Promise<number> {
   const registry = createPublisherRegistry();
   const readyPublishers = await getReadyPublishers(registry);
-  const jobs = await claimApprovedJobs([...readyPublishers.keys()]);
+  const jobs = await claimApprovedJobs(readyPublishers);
 
   for (const job of jobs) {
     const publisher = readyPublishers.get(job.platform);

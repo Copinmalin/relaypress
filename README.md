@@ -65,9 +65,13 @@ Le dépôt contient déjà un MVP éditorial fonctionnel en staging :
 - conservation de la source et du contenu adapté ;
 - interface admin de validation et d’édition ;
 - génération OpenAI contrôlée sur demande humaine ;
-- publisher mock ;
-- historique d’exécution ;
-- première préparation du publisher LinkedIn réel.
+- campagnes multi-formats LinkedIn, X, Facebook et Nostr long-form ;
+- routage publisher explicite par plateforme ;
+- publishers mock ou disabled par défaut ;
+- publisher LinkedIn réel préparé avec compte OAuth chiffré, safety ack exact et allowlist d’un seul job ;
+- historique d’exécution et anti-republication.
+
+LinkedIn réel reste désarmé par défaut. Son activation exige une fenêtre de test séparée, documentée et explicitement approuvée.
 
 La trajectoire actuelle est de passer d’un MVP de jobs éditoriaux à une application produit centrée sur :
 

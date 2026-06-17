@@ -4,7 +4,7 @@ Ce document est la source de verite operationnelle principale du projet RelayPre
 
 Derniere mise a jour : 2026-06-17
 
-Etat global : MVP editorial souverain fonctionnel en staging. RelayPress transforme des sources selectionnees en signaux editoriaux, puis en campagnes LinkedIn, X, Facebook et Nostr long-form. La generation OpenAI reste source-grounded, structuree et soumise a revue humaine. PR X0 remplace le mode publisher global par un routage explicite par plateforme, uniquement en mock ou disabled. Aucun reseau reel ne peut etre active dans cette phase.
+Etat global : MVP editorial souverain fonctionnel en staging. RelayPress transforme des sources selectionnees en signaux editoriaux, puis en campagnes LinkedIn, X, Facebook et Nostr long-form. La generation OpenAI reste source-grounded, structuree et soumise a revue humaine. Le routage publisher est explicite par plateforme. PR X1 ajoute une publication LinkedIn reelle strictement controlee, ciblee sur un compte OAuth chiffre et un seul job allowliste. Tous les autres publishers reels restent bloques.
 
 ---
 
@@ -32,6 +32,7 @@ Principes non negociables :
 - La generation IA ne valide, ne publie et n archive jamais automatiquement.
 - Un job publie ou rattache a un `external_post_id` ne doit jamais etre regenere ou republie accidentellement.
 - Les publishers reels exigent un armement explicite, propre a chaque plateforme.
+- LinkedIn reel exige en plus un compte exact et un job exact allowliste.
 - Aucun secret ne doit etre ajoute au depot ou affiche dans les logs.
 - Les actions importantes doivent rester auditables.
 - Telegram est hors scope comme canal de diffusion RelayPress.
@@ -53,8 +54,12 @@ Principes non negociables :
 | Source automatisee initiale | BTC Breakdown |
 | Admin | sources, signaux, jobs, generation et campagnes multi-formats |
 | IA | OpenAI activable, fallback mock, sortie JSON stricte |
-| Publishers PR X0 | routage par plateforme, modes `mock` ou `disabled` seulement |
-| Publication reelle | aucune activation reelle dans PR X0 |
+| Routage publishers | registry par plateforme |
+| LinkedIn | mock par defaut, real controle dans PR X1 |
+| X | mock ou disabled |
+| Facebook | mock ou disabled |
+| Instagram | disabled par defaut |
+| Nostr long-form | mock ou disabled |
 
 ---
 
@@ -82,9 +87,12 @@ Publisher router
   choisit le publisher configure pour cette plateforme
   ne reclame que les plateformes ready
 
-Publisher
-  mock ou disabled dans PR X0
-  reel uniquement dans une PR dediee ulterieure
+Publisher mock
+  simule publication et audit
+
+Publisher LinkedIn reel PR X1
+  verifie mode, safety ack, compte exact, scope, token et job exact
+  publie via LinkedIn Posts API versionnee
 ```
 
 ---
@@ -132,7 +140,9 @@ Regles :
 - apres generation, le job reste soumis a une decision humaine ;
 - seul un job `approved`, non publie et sans `external_post_id` peut etre reclame par le worker ;
 - une plateforme disabled ne doit pas etre reclamee ;
-- une plateforme real non supportee dans X0 reste bloquee et son job reste `approved`.
+- LinkedIn reel ne reclame que `LINKEDIN_REAL_ALLOWED_JOB_ID` ;
+- tous les autres jobs LinkedIn approuves restent intacts ;
+- X, Facebook, Instagram et Nostr real restent bloques.
 
 ---
 
@@ -174,9 +184,9 @@ Garde-fous :
 
 ---
 
-## 6. Routage publishers PR X0
+## 6. Routage publishers
 
-PR X0 introduit un registry :
+Registry :
 
 ```text
 linkedin       -> publisher LinkedIn configure
@@ -186,7 +196,7 @@ instagram      -> publisher Instagram configure
 nostr_longform -> publisher Nostr configure
 ```
 
-Configuration :
+Configuration sure par defaut :
 
 ```text
 LINKEDIN_PUBLISHER_MODE=mock
@@ -196,85 +206,162 @@ INSTAGRAM_PUBLISHER_MODE=disabled
 NOSTR_PUBLISHER_MODE=mock
 ```
 
-Modes supportes dans X0 :
+Le parametre historique `PUBLISHER_MODE` est conserve uniquement pour visibilite de migration. Il ne peut pas armer une publication reelle.
+
+### Modes reels
+
+PR X1 autorise `real` uniquement pour LinkedIn.
+
+Pour X, Facebook, Instagram et Nostr :
 
 ```text
-mock
-disabled
+requestedMode=real
+-> effectiveMode=disabled
+-> reason=real_publisher_not_enabled_in_pr_x0
 ```
-
-Toute valeur `real` ou inconnue produit :
-
-```text
-requestedMode = valeur demandee
-effectiveMode = disabled
-reason = explicite dans les logs
-```
-
-Le parametre historique `PUBLISHER_MODE` est conserve uniquement pour visibilite de migration. Il ne peut plus armer une publication reelle.
-
-Futurs verrous par plateforme :
-
-```text
-LINKEDIN_REAL_SAFETY_ACK
-X_REAL_SAFETY_ACK
-META_REAL_SAFETY_ACK
-NOSTR_REAL_SAFETY_ACK
-```
-
-Dans X0, la presence de ces valeurs est seulement signalee comme booleen dans le plan de routage. Leur contenu n est jamais logge et aucune activation reelle n en resulte.
 
 ---
 
-## 7. Orchestrateur worker
+## 7. LinkedIn reel controle PR X1
+
+Armement obligatoire :
+
+```text
+LINKEDIN_PUBLISHER_MODE=real
+LINKEDIN_REAL_SAFETY_ACK=I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION
+LINKEDIN_PUBLISHER_ACCOUNT_ID=<id interne exact>
+LINKEDIN_REAL_ALLOWED_JOB_ID=<id exact du job approuve>
+```
+
+Sans l un de ces elements :
+
+```text
+effectiveMode=disabled
+aucun claim
+aucun appel LinkedIn
+```
+
+### Compte et credentials
+
+Le compte reel provient uniquement de `publisher_accounts` :
+
+```text
+provider=linkedin
+status=connected
+account_urn=urn:li:person:...
+scopes contient w_member_social
+access token chiffre et non expire
+userinfo.sub correspond a account_urn
+```
+
+Les variables historiques :
+
+```text
+LINKEDIN_ACCESS_TOKEN
+LINKEDIN_AUTHOR_URN
+```
+
+ne sont pas utilisees pour le publisher reel PR X1.
+
+### API officielle
+
+```text
+POST https://api.linkedin.com/rest/posts
+Linkedin-Version: 202606
+X-Restli-Protocol-Version: 2.0.0
+```
+
+Payload texte :
+
+```text
+author
+commentary
+visibility=PUBLIC
+distribution.feedDistribution=MAIN_FEED
+lifecycleState=PUBLISHED
+isReshareDisabledByAuthor=false
+```
+
+La reponse attendue est `201` avec `x-restli-id`.
+
+### Limite de publication
+
+Le publisher LinkedIn reel :
+
+- est limite a un job par tick ;
+- reclame uniquement l ID allowliste ;
+- refuse aussi dans `publish()` tout autre ID ;
+- laisse les autres jobs `approved` ;
+- cree un run `mode=real` ;
+- ne journalise aucun token.
+
+### Reponse sans identifiant
+
+Si LinkedIn retourne 201 sans `x-restli-id` :
+
+```text
+postMayHaveBeenCreated=true
+```
+
+Ne pas utiliser Retry avant reconciliation humaine sur LinkedIn.
+
+---
+
+## 8. Orchestrateur worker
 
 A chaque tick :
 
 1. construire le registry des publishers ;
 2. verifier `isReady()` pour chaque plateforme ;
 3. journaliser les plateformes bloquees sans secret ;
-4. reclamer uniquement les jobs approuves des plateformes ready ;
-5. router chaque job vers son publisher ;
-6. creer un `publication_job_run` ;
-7. enregistrer succes ou echec ;
-8. conserver l anti-republication existante.
+4. appliquer les contraintes propres au publisher ;
+5. reclamer uniquement les jobs approuves eligibles ;
+6. router chaque job vers son publisher ;
+7. creer un `publication_job_run` ;
+8. enregistrer succes ou echec ;
+9. conserver l anti-republication existante.
 
-Le batch reste global dans cette phase :
+Le batch global reste :
 
 ```text
 PUBLISHER_BATCH_SIZE=10
 ```
 
+Le publisher LinkedIn reel impose sa propre limite :
+
+```text
+maxJobsPerTick=1
+```
+
 ---
 
-## 8. Publication et connexions futures
-
-Aucun appel reel LinkedIn, X, Meta ou Nostr n est effectue dans PR X0.
+## 9. Connexions futures
 
 Ordre prevu :
 
 ```text
-PR X0 routeur multi-publishers
--> PR X1 LinkedIn reel
+PR X0 routeur multi-publishers : implemente
+-> PR X1 LinkedIn reel : en cours
 -> PR X2 Nostr long-form reel
 -> PR X3 Facebook / Meta
 -> PR X4 X
 -> PR X5 Instagram et media
 ```
 
-Chaque PR reelle devra ajouter :
+Chaque PR reelle doit ajouter :
 
 - OAuth ou signer adapte ;
 - stockage chiffre des credentials ;
 - readiness check ;
 - safety ack propre a la plateforme ;
-- test limite a un job ;
+- selection explicite du compte ;
+- test limite et controle ;
 - rollback vers mock ou disabled ;
 - audit sans secret.
 
 ---
 
-## 9. Documents actifs faisant autorite
+## 10. Documents actifs faisant autorite
 
 | Document | Role |
 |---|---|
@@ -290,7 +377,7 @@ Ne pas creer un document de phase par PR. Mettre a jour ce Master pour les chang
 
 ---
 
-## 10. Historique synthetique
+## 11. Historique synthetique
 
 ```text
 PR A1 a A3 - Sources : implemente
@@ -299,30 +386,32 @@ PR H et I - Generation controlee : implemente
 PR U - Profil B-Conseil source-grounded : implemente
 PR V - Campagne LinkedIn / X / Facebook / Nostr long-form : implemente
 PR W - Revue admin campagne simplifiee : en cours
-PR X0 - Routage multi-publishers et verrous par plateforme : en cours
-PR J / X1 - LinkedIn reel controle : a reprendre apres X0
+PR X0 - Routage multi-publishers et verrous par plateforme : implemente
+PR X1 - LinkedIn reel controle via Posts API : en cours
 ```
 
 ---
 
-## 11. Risques actifs
+## 12. Risques actifs
 
 | Risque | Controle |
 |---|---|
-| Publication reelle accidentelle | X0 n expose que `mock` et `disabled` |
-| Valeur `real` dans l environnement | conversion en disabled avec raison explicite |
+| Publication LinkedIn reelle accidentelle | quatre verrous runtime simultanes |
+| Mauvais compte LinkedIn | account ID exact et userinfo subject match |
+| Plusieurs jobs LinkedIn approuves | allowlist d un seul job et limite un par tick |
+| Token expire ou invalide | readiness avant claim, refresh si disponible, OAuth sinon |
+| Scope insuffisant | `w_member_social` obligatoire |
+| Mauvaise version API | `LINKEDIN_API_VERSION=202606` explicite |
+| Reponse 201 sans ID | pas de retry automatique, reconciliation humaine |
+| Valeur real sur autre plateforme | conversion en disabled |
 | Legacy `PUBLISHER_MODE=linkedin_real` | variable ignoree pour le routage effectif |
-| Plateforme disabled reclamee | seules les plateformes ready entrent dans la requete de claim |
 | Republication accidentelle | statut approved, external id null et published_at null requis |
-| Secret dans les logs | plan de routage sans valeur de token ni contenu de safety ack |
-| Echec d un publisher | run et job marques failed sans toucher aux autres jobs |
-| Invention IA | prompt source-grounded, facts used, claims a verifier et revue humaine |
-| Depassement X | adaptation bornee a 140 caracteres |
-| Nostr sans publisher reel | mock ou disabled seulement dans X0 |
+| Secret dans les logs | aucun token, refresh token, client secret ou safety ack |
+| Invention IA | prompt source-grounded et revue humaine |
 
 ---
 
-## 12. Smoke tests
+## 13. Smoke tests
 
 ### PR V
 
@@ -330,29 +419,38 @@ Valide : quatre formats generes, zero echec, tous laisses en `pending_review` av
 
 ### PR X0
 
+Valide : quatre plateformes mock routees, Instagram disabled, real bloque sur les plateformes non supportees.
+
+### PR X1
+
 Script :
 
 ```text
-scripts/smoke-pr-x0-publisher-routing.sh
+scripts/smoke-pr-x1-linkedin-real.sh
 ```
 
-Doit verifier :
+Il doit verifier sans appel LinkedIn reel :
 
-- LinkedIn, X, Facebook et Nostr long-form mock traites dans un meme run ;
-- Instagram disabled reste `approved` ;
-- external IDs mock prefixes par plateforme ;
-- `PUBLISHER_MODE=linkedin_real` legacy n active rien de reel ;
-- `X_PUBLISHER_MODE=real` est bloque ;
-- le job X bloque reste `approved` sans external id ;
-- les jobs de test sont archives en nettoyage ;
-- le worker normal est redemarre.
+- safety ack invalide bloque ;
+- account ID manquant bloque ;
+- allowed job ID manquant bloque ;
+- fake `userinfo` valide le compte exact ;
+- fake `POST /posts` recoit les headers et le payload officiels ;
+- exactement un job allowliste est publie ;
+- un job LinkedIn decoy reste `approved` ;
+- run `mode=real` cree ;
+- token absent des runs et logs ;
+- fixtures archivees et compte de test supprime ;
+- worker normal redemarre.
+
+Le test LinkedIn reel public reste une operation separee, soumise au runbook et a un feu vert explicite.
 
 ---
 
-## 13. Backlog court
+## 14. Backlog court
 
 1. Valider PR W en staging puis fusionner.
-2. Valider PR X0 avec checks et smoke multi-publishers.
-3. Implementer PR X1 LinkedIn reel sur le routeur X0.
-4. Implementer PR X2 Nostr long-form avec signer distant.
-5. Preparer Meta puis X et Instagram.
+2. Valider PR X1 avec checks et smoke simule.
+3. Effectuer un test LinkedIn reel sur un seul job apres feu vert separe.
+4. Restaurer mock et documenter le test.
+5. Implementer PR X2 Nostr long-form avec signer distant.

@@ -1,5 +1,7 @@
 import type { PublisherPlatform } from "./publisher/types.js";
 
+export const LINKEDIN_REAL_SAFETY_ACK_VALUE = "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION";
+
 export function readCsvEnv(name: string, fallback: string[] = []): string[] {
   const value = process.env[name];
   if (!value) return fallback;
@@ -21,7 +23,7 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
-export type PublisherEffectiveMode = "mock" | "disabled";
+export type PublisherEffectiveMode = "mock" | "disabled" | "real";
 
 export type PublisherRouteConfig = {
   platform: PublisherPlatform;
@@ -30,15 +32,26 @@ export type PublisherRouteConfig = {
   effectiveMode: PublisherEffectiveMode;
   reason?: string;
   safetyAckConfigured: boolean;
+  safetyAckValid: boolean;
+  accountConfigured: boolean;
+  allowedJobIdConfigured: boolean;
+  allowedJobId?: string;
 };
 
 function readPublisherRoute(
   platform: PublisherPlatform,
   envName: string,
-  fallback: PublisherEffectiveMode,
+  fallback: "mock" | "disabled",
   safetyAckEnvName: string,
 ): PublisherRouteConfig {
   const requestedMode = (process.env[envName] ?? fallback).trim().toLowerCase();
+  const safetyAck = process.env[safetyAckEnvName]?.trim() ?? "";
+  const safetyAckConfigured = safetyAck.length > 0;
+  const safetyAckValid = platform === "linkedin" && safetyAck === LINKEDIN_REAL_SAFETY_ACK_VALUE;
+  const accountId = process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "";
+  const allowedJobId = process.env.LINKEDIN_REAL_ALLOWED_JOB_ID?.trim() ?? "";
+  const accountConfigured = platform === "linkedin" && accountId.length > 0;
+  const allowedJobIdConfigured = platform === "linkedin" && allowedJobId.length > 0;
 
   if (requestedMode === "mock") {
     return {
@@ -46,7 +59,10 @@ function readPublisherRoute(
       envName,
       requestedMode,
       effectiveMode: "mock",
-      safetyAckConfigured: Boolean(process.env[safetyAckEnvName]?.trim()),
+      safetyAckConfigured,
+      safetyAckValid,
+      accountConfigured,
+      allowedJobIdConfigured,
     };
   }
 
@@ -57,18 +73,80 @@ function readPublisherRoute(
       requestedMode,
       effectiveMode: "disabled",
       reason: "publisher_disabled_by_configuration",
-      safetyAckConfigured: Boolean(process.env[safetyAckEnvName]?.trim()),
+      safetyAckConfigured,
+      safetyAckValid,
+      accountConfigured,
+      allowedJobIdConfigured,
     };
   }
 
   if (requestedMode === "real") {
+    if (platform !== "linkedin") {
+      return {
+        platform,
+        envName,
+        requestedMode,
+        effectiveMode: "disabled",
+        reason: "real_publisher_not_enabled_in_pr_x0",
+        safetyAckConfigured,
+        safetyAckValid,
+        accountConfigured,
+        allowedJobIdConfigured,
+      };
+    }
+
+    if (!safetyAckValid) {
+      return {
+        platform,
+        envName,
+        requestedMode,
+        effectiveMode: "disabled",
+        reason: "linkedin_real_safety_ack_missing_or_invalid",
+        safetyAckConfigured,
+        safetyAckValid,
+        accountConfigured,
+        allowedJobIdConfigured,
+      };
+    }
+
+    if (!accountConfigured) {
+      return {
+        platform,
+        envName,
+        requestedMode,
+        effectiveMode: "disabled",
+        reason: "linkedin_publisher_account_id_missing",
+        safetyAckConfigured,
+        safetyAckValid,
+        accountConfigured,
+        allowedJobIdConfigured,
+      };
+    }
+
+    if (!allowedJobIdConfigured) {
+      return {
+        platform,
+        envName,
+        requestedMode,
+        effectiveMode: "disabled",
+        reason: "linkedin_real_allowed_job_id_missing",
+        safetyAckConfigured,
+        safetyAckValid,
+        accountConfigured,
+        allowedJobIdConfigured,
+      };
+    }
+
     return {
       platform,
       envName,
       requestedMode,
-      effectiveMode: "disabled",
-      reason: "real_publisher_not_enabled_in_pr_x0",
-      safetyAckConfigured: Boolean(process.env[safetyAckEnvName]?.trim()),
+      effectiveMode: "real",
+      safetyAckConfigured,
+      safetyAckValid,
+      accountConfigured,
+      allowedJobIdConfigured,
+      allowedJobId,
     };
   }
 
@@ -78,7 +156,10 @@ function readPublisherRoute(
     requestedMode,
     effectiveMode: "disabled",
     reason: "unsupported_publisher_mode",
-    safetyAckConfigured: Boolean(process.env[safetyAckEnvName]?.trim()),
+    safetyAckConfigured,
+    safetyAckValid,
+    accountConfigured,
+    allowedJobIdConfigured,
   };
 }
 
@@ -122,9 +203,10 @@ export const workerConfig = {
   sourceIngestionBatchSize: Number(process.env.SOURCE_INGESTION_BATCH_SIZE ?? 10),
   sourceIngestionIntervalMs: Number(process.env.SOURCE_INGESTION_INTERVAL_MS ?? 43_200_000),
   btcbreakdownBaseUrl: normalizeBaseUrl(process.env.BTCBREAKDOWN_BASE_URL ?? "https://www.btcbreakdown.com"),
-  linkedinAccessToken: process.env.LINKEDIN_ACCESS_TOKEN ?? "",
-  linkedinAuthorUrn: process.env.LINKEDIN_AUTHOR_URN ?? "",
-  linkedinApiBaseUrl: normalizeBaseUrl(process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/v2"),
+  linkedinPublisherAccountId: process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "",
+  linkedinApiBaseUrl: normalizeBaseUrl(process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest"),
+  linkedinApiVersion: process.env.LINKEDIN_API_VERSION?.trim() || "202606",
+  linkedinUserInfoUrl: process.env.LINKEDIN_USERINFO_URL?.trim() || "https://api.linkedin.com/v2/userinfo",
   nostrPrivateRelay: process.env.NOSTR_PRIVATE_RELAY ?? "ws://strfry:7777",
   nostrPublicRelays: readCsvEnv("NOSTR_PUBLIC_RELAYS", [
     "wss://relay.damus.io",
