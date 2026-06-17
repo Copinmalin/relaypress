@@ -87,7 +87,7 @@ function readPublisherRoute(
         envName,
         requestedMode,
         effectiveMode: "disabled",
-        reason: "real_publisher_not_enabled_for_platform",
+        reason: "real_publisher_not_enabled_in_pr_x0",
         safetyAckConfigured,
         safetyAckValid,
         accountConfigured,
