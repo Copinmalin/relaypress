@@ -66,9 +66,8 @@ NODE
 # directly in PostgreSQL for this router-only smoke test.
 docker compose exec -T api node <<'NODE' > "$TMP_FILE"
 import { randomUUID } from "node:crypto";
-import pg from "pg";
+import { pool } from "./services/api/dist/db.js";
 
-const { Client } = pg;
 const base = "http://127.0.0.1:3000";
 const token = process.env.ADMIN_API_TOKEN;
 const manualPlatforms = ["linkedin", "x", "facebook", "instagram"];
@@ -97,10 +96,9 @@ const created = await api("/publication-jobs/manual-draft", {
 
 const nostrJobId = `manual:${randomUUID()}:nostr_longform`;
 const nostrContent = `${marker}\nSmoke routing Nostr long-form, aucun appel relais reel.`;
-const client = new Client({ connectionString: process.env.DATABASE_URL });
-await client.connect();
+
 try {
-  await client.query(
+  await pool.query(
     `
       insert into publication_jobs (
         id,
@@ -117,7 +115,7 @@ try {
     [nostrJobId, nostrContent],
   );
 } finally {
-  await client.end();
+  await pool.end();
 }
 
 const jobs = [...created.jobs, { id: nostrJobId, platform: "nostr_longform" }];
