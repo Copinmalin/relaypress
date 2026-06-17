@@ -1,9 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { workerConfig } from "../config.js";
+import { workerConfig, type PublisherRouteConfig } from "../config.js";
 import { pool } from "../db.js";
-import { createLinkedInPublisher } from "./linkedin-publisher.js";
+import { createDisabledPublisher } from "./disabled-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
-import type { ClaimedPublicationJob, PublicationPublisher } from "./types.js";
+import type {
+  ClaimedPublicationJob,
+  PublicationPublisher,
+  PublisherPlatform,
+} from "./types.js";
 import { getPublisherErrorRawResponse } from "./types.js";
 
 type PublicationRunResult = {
@@ -11,21 +15,82 @@ type PublicationRunResult = {
   externalPostId: string;
 };
 
-const LINKEDIN_REAL_SAFETY_ACK = "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION";
+type PublisherRegistry = Map<PublisherPlatform, PublicationPublisher>;
 
-function selectPublisher(): PublicationPublisher {
-  if (workerConfig.publisherMode === "linkedin_real") {
-    if (workerConfig.publisherRealSafetyAck !== LINKEDIN_REAL_SAFETY_ACK) {
-      return createMockPublisher();
-    }
+type PublisherRoutingEntry = {
+  platform: PublisherPlatform;
+  requestedMode: string;
+  effectiveMode: string;
+  component: string;
+  safetyAckConfigured: boolean;
+  reason?: string;
+};
 
-    return createLinkedInPublisher();
+function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
+  if (route.effectiveMode === "mock") {
+    return createMockPublisher(route.platform);
   }
 
-  return createMockPublisher();
+  return createDisabledPublisher(
+    route.platform,
+    route.reason ?? "publisher_disabled",
+  );
 }
 
-async function claimApprovedJobs(publisher: PublicationPublisher): Promise<ClaimedPublicationJob[]> {
+function createPublisherRegistry(): PublisherRegistry {
+  const registry: PublisherRegistry = new Map();
+
+  for (const route of Object.values(workerConfig.publisherRoutes)) {
+    registry.set(route.platform, createPublisher(route));
+  }
+
+  return registry;
+}
+
+export function describePublisherRouting(): PublisherRoutingEntry[] {
+  return Object.values(workerConfig.publisherRoutes).map((route) => {
+    const publisher = createPublisher(route);
+
+    return {
+      platform: route.platform,
+      requestedMode: route.requestedMode,
+      effectiveMode: route.effectiveMode,
+      component: publisher.component,
+      safetyAckConfigured: route.safetyAckConfigured,
+      reason: route.reason,
+    };
+  });
+}
+
+async function getReadyPublishers(registry: PublisherRegistry): Promise<PublisherRegistry> {
+  const ready: PublisherRegistry = new Map();
+
+  for (const [platform, publisher] of registry.entries()) {
+    const readiness = await publisher.isReady();
+
+    if (!readiness.ready) {
+      console.warn(JSON.stringify({
+        service: "relaypress-worker",
+        component: "publisher-router",
+        status: "skipped",
+        platform,
+        publisherMode: publisher.mode,
+        publisherComponent: publisher.component,
+        reason: readiness.reason ?? "publisher_not_ready",
+        timestamp: new Date().toISOString(),
+      }));
+      continue;
+    }
+
+    ready.set(platform, publisher);
+  }
+
+  return ready;
+}
+
+async function claimApprovedJobs(platforms: PublisherPlatform[]): Promise<ClaimedPublicationJob[]> {
+  if (platforms.length === 0) return [];
+
   const result = await pool.query<ClaimedPublicationJob>(
     `
       update publication_jobs
@@ -45,7 +110,7 @@ async function claimApprovedJobs(publisher: PublicationPublisher): Promise<Claim
       )
       returning id, platform, adapted_content
     `,
-    [workerConfig.publisherBatchSize, publisher.supportedPlatforms],
+    [workerConfig.publisherBatchSize, platforms],
   );
 
   return result.rows;
@@ -73,6 +138,7 @@ async function createStartedRun(job: ClaimedPublicationJob, publisher: Publicati
       publisher.mode,
       {
         component: publisher.component,
+        routedPlatform: job.platform,
         contentLength: job.adapted_content?.length ?? 0,
       },
     ],
@@ -206,26 +272,18 @@ async function markJobAsPublished(
 }
 
 export async function processApprovedPublicationJobs(): Promise<number> {
-  const publisher = selectPublisher();
-  const readiness = await publisher.isReady();
-
-  if (!readiness.ready) {
-    console.warn(JSON.stringify({
-      service: "relaypress-worker",
-      component: "publisher-orchestrator",
-      status: "skipped",
-      reason: readiness.reason ?? "publisher_not_ready",
-      publisherMode: workerConfig.publisherMode,
-      publisherComponent: publisher.component,
-      timestamp: new Date().toISOString(),
-    }));
-
-    return 0;
-  }
-
-  const jobs = await claimApprovedJobs(publisher);
+  const registry = createPublisherRegistry();
+  const readyPublishers = await getReadyPublishers(registry);
+  const jobs = await claimApprovedJobs([...readyPublishers.keys()]);
 
   for (const job of jobs) {
+    const publisher = readyPublishers.get(job.platform);
+
+    if (!publisher) {
+      await markJobAsFailed(job, new Error(`No ready publisher routed for platform: ${job.platform}`));
+      continue;
+    }
+
     try {
       const result = await markJobAsPublished(job, publisher);
 
@@ -233,6 +291,7 @@ export async function processApprovedPublicationJobs(): Promise<number> {
         service: "relaypress-worker",
         component: publisher.component,
         status: "published",
+        publisherMode: publisher.mode,
         jobId: job.id,
         runId: result.runId,
         platform: job.platform,
@@ -246,6 +305,7 @@ export async function processApprovedPublicationJobs(): Promise<number> {
         service: "relaypress-worker",
         component: publisher.component,
         status: "failed",
+        publisherMode: publisher.mode,
         jobId: job.id,
         platform: job.platform,
         error: message,
