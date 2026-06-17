@@ -1,7 +1,7 @@
 import { workerConfig } from "./config.js";
 import { initializeDatabase } from "./db.js";
 import { startNostrIndexer } from "./nostr/indexer.js";
-import { processApprovedPublicationJobs } from "./publisher/index.js";
+import { describePublisherRouting, processApprovedPublicationJobs } from "./publisher/index.js";
 import { ingestBtcBreakdownSourceItems } from "./sources/btcbreakdown.js";
 
 const appName = "relaypress";
@@ -44,7 +44,8 @@ async function tick() {
     service: "relaypress-worker",
     app: appName,
     status: "running",
-    publisherMode: workerConfig.publisherMode,
+    publisherRouting: describePublisherRouting(),
+    legacyPublisherMode: workerConfig.legacyPublisherMode || null,
     ingestedSourceItems,
     publishedJobs,
     timestamp: new Date().toISOString(),

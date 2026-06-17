@@ -1,12 +1,16 @@
-import type { PublicationPublisher } from "./types.js";
+import type { PublicationPublisher, PublisherPlatform } from "./types.js";
 
-export function createMockPublisher(): PublicationPublisher {
+export function createMockPublisher(platform: PublisherPlatform): PublicationPublisher {
   return {
+    platform,
     mode: "mock",
-    component: "mock-publisher",
-    supportedPlatforms: ["x", "linkedin", "facebook", "instagram"],
+    component: `${platform}-mock-publisher`,
     isReady: async () => ({ ready: true }),
     publish: async (job) => {
+      if (job.platform !== platform) {
+        throw new Error(`Mock publisher for ${platform} cannot publish platform: ${job.platform}`);
+      }
+
       const externalPostId = `mock:${job.platform}:${job.id}`;
 
       return {
