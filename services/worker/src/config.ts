@@ -28,6 +28,18 @@ function readPlatformPublisherMode(
   const value = process.env[name]?.trim().toLowerCase();
   if (!value) return fallback;
   if (value === "disabled" || value === "mock" || value === "real") return value;
+
+  console.warn(JSON.stringify({
+    service: "relaypress-worker",
+    component: "publisher-config",
+    status: "invalid_config_fallback",
+    variable: name,
+    receivedValue: value,
+    fallback,
+    allowedValues: ["disabled", "mock", "real"],
+    timestamp: new Date().toISOString(),
+  }));
+
   return fallback;
 }
 
