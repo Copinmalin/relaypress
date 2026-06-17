@@ -44,6 +44,8 @@ export type PublicationPublisher = {
   supportedPlatforms?: PublisherPlatform[];
   mode: string;
   component: string;
+  maxJobsPerTick?: number;
+  allowedJobId?: string;
   isReady: () => Promise<PublisherReadiness>;
   publish: (job: ClaimedPublicationJob) => Promise<PublicationPublishResult>;
 };
