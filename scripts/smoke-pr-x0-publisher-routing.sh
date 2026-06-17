@@ -65,9 +65,10 @@ NODE
 # yet accept nostr_longform on this branch, so the Nostr fixture is inserted
 # directly in PostgreSQL for this router-only smoke test.
 docker compose exec -T api node <<'NODE' > "$TMP_FILE"
-const { randomUUID } = require("node:crypto");
-const { Client } = require("pg");
+import { randomUUID } from "node:crypto";
+import pg from "pg";
 
+const { Client } = pg;
 const base = "http://127.0.0.1:3000";
 const token = process.env.ADMIN_API_TOKEN;
 const manualPlatforms = ["linkedin", "x", "facebook", "instagram"];
