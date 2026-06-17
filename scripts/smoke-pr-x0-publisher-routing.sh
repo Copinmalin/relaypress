@@ -61,12 +61,16 @@ if (payload.count > 0) {
 console.log("APPROVED_QUEUE_EMPTY=OK");
 NODE
 
-# Create one approved job per platform. The running worker is stopped so the smoke
-# test can control exactly which publisher registry claims each job.
+# Create one approved job per platform. The current manual-draft endpoint does not
+# yet accept nostr_longform on this branch, so the Nostr fixture is inserted
+# directly in PostgreSQL for this router-only smoke test.
 docker compose exec -T api node <<'NODE' > "$TMP_FILE"
+const { randomUUID } = require("node:crypto");
+const { Client } = require("pg");
+
 const base = "http://127.0.0.1:3000";
 const token = process.env.ADMIN_API_TOKEN;
-const platforms = ["linkedin", "x", "facebook", "instagram", "nostr_longform"];
+const manualPlatforms = ["linkedin", "x", "facebook", "instagram"];
 const marker = `PR-X0-${Date.now()}`;
 
 async function api(path, options = {}) {
@@ -86,11 +90,37 @@ const created = await api("/publication-jobs/manual-draft", {
   method: "POST",
   body: JSON.stringify({
     content: `${marker}\nSmoke routing multi-publishers, aucun appel reseau reel.`,
-    platforms,
+    platforms: manualPlatforms,
   }),
 });
 
-for (const job of created.jobs) {
+const nostrJobId = `manual:${randomUUID()}:nostr_longform`;
+const nostrContent = `${marker}\nSmoke routing Nostr long-form, aucun appel relais reel.`;
+const client = new Client({ connectionString: process.env.DATABASE_URL });
+await client.connect();
+try {
+  await client.query(
+    `
+      insert into publication_jobs (
+        id,
+        source_event_id,
+        platform,
+        status,
+        source_content,
+        adapted_content,
+        error_message,
+        created_at,
+        updated_at
+      ) values ($1, null, 'nostr_longform', 'pending_review', $2, $2, null, now(), now())
+    `,
+    [nostrJobId, nostrContent],
+  );
+} finally {
+  await client.end();
+}
+
+const jobs = [...created.jobs, { id: nostrJobId, platform: "nostr_longform" }];
+for (const job of jobs) {
   await api(`/publication-jobs/${encodeURIComponent(job.id)}/approve`, { method: "POST" });
   process.stdout.write(`${job.platform}\t${job.id}\n`);
 }
