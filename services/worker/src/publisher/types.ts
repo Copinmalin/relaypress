@@ -40,7 +40,8 @@ export function getPublisherErrorRawResponse(error: unknown): Record<string, unk
 }
 
 export type PublicationPublisher = {
-  platform: PublisherPlatform;
+  platform?: PublisherPlatform;
+  supportedPlatforms?: PublisherPlatform[];
   mode: string;
   component: string;
   isReady: () => Promise<PublisherReadiness>;
