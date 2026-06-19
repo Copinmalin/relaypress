@@ -23,6 +23,10 @@ function normalizeBaseUrl(value: string): string {
   return value.replace(/\/+$/, "");
 }
 
+function isSupportedLinkedInTargetUrn(value: string): boolean {
+  return value.startsWith("urn:li:person:") || value.startsWith("urn:li:organization:");
+}
+
 export type PublisherEffectiveMode = "mock" | "disabled" | "real";
 
 export type PublisherRouteConfig = {
@@ -35,6 +39,8 @@ export type PublisherRouteConfig = {
   safetyAckValid: boolean;
   accountConfigured: boolean;
   allowedJobIdConfigured: boolean;
+  targetConfigured: boolean;
+  targetUrn?: string;
   allowedJobId?: string;
 };
 
@@ -50,8 +56,19 @@ function readPublisherRoute(
   const safetyAckValid = platform === "linkedin" && safetyAck === LINKEDIN_REAL_SAFETY_ACK_VALUE;
   const accountId = process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "";
   const allowedJobId = process.env.LINKEDIN_REAL_ALLOWED_JOB_ID?.trim() ?? "";
+  const targetUrn = process.env.LINKEDIN_PUBLISHER_TARGET_URN?.trim() ?? "";
   const accountConfigured = platform === "linkedin" && accountId.length > 0;
   const allowedJobIdConfigured = platform === "linkedin" && allowedJobId.length > 0;
+  const targetConfigured = platform === "linkedin" && targetUrn.length > 0;
+
+  const common = {
+    safetyAckConfigured,
+    safetyAckValid,
+    accountConfigured,
+    allowedJobIdConfigured,
+    targetConfigured,
+    targetUrn: targetConfigured ? targetUrn : undefined,
+  };
 
   if (requestedMode === "mock") {
     return {
@@ -59,10 +76,7 @@ function readPublisherRoute(
       envName,
       requestedMode,
       effectiveMode: "mock",
-      safetyAckConfigured,
-      safetyAckValid,
-      accountConfigured,
-      allowedJobIdConfigured,
+      ...common,
     };
   }
 
@@ -73,10 +87,7 @@ function readPublisherRoute(
       requestedMode,
       effectiveMode: "disabled",
       reason: "publisher_disabled_by_configuration",
-      safetyAckConfigured,
-      safetyAckValid,
-      accountConfigured,
-      allowedJobIdConfigured,
+      ...common,
     };
   }
 
@@ -88,10 +99,18 @@ function readPublisherRoute(
         requestedMode,
         effectiveMode: "disabled",
         reason: "real_publisher_not_enabled_in_pr_x0",
-        safetyAckConfigured,
-        safetyAckValid,
-        accountConfigured,
-        allowedJobIdConfigured,
+        ...common,
+      };
+    }
+
+    if (targetConfigured && !isSupportedLinkedInTargetUrn(targetUrn)) {
+      return {
+        platform,
+        envName,
+        requestedMode,
+        effectiveMode: "disabled",
+        reason: "linkedin_publisher_target_urn_invalid",
+        ...common,
       };
     }
 
@@ -102,10 +121,7 @@ function readPublisherRoute(
         requestedMode,
         effectiveMode: "disabled",
         reason: "linkedin_real_safety_ack_missing_or_invalid",
-        safetyAckConfigured,
-        safetyAckValid,
-        accountConfigured,
-        allowedJobIdConfigured,
+        ...common,
       };
     }
 
@@ -116,10 +132,7 @@ function readPublisherRoute(
         requestedMode,
         effectiveMode: "disabled",
         reason: "linkedin_publisher_account_id_missing",
-        safetyAckConfigured,
-        safetyAckValid,
-        accountConfigured,
-        allowedJobIdConfigured,
+        ...common,
       };
     }
 
@@ -130,10 +143,7 @@ function readPublisherRoute(
         requestedMode,
         effectiveMode: "disabled",
         reason: "linkedin_real_allowed_job_id_missing",
-        safetyAckConfigured,
-        safetyAckValid,
-        accountConfigured,
-        allowedJobIdConfigured,
+        ...common,
       };
     }
 
@@ -142,10 +152,7 @@ function readPublisherRoute(
       envName,
       requestedMode,
       effectiveMode: "real",
-      safetyAckConfigured,
-      safetyAckValid,
-      accountConfigured,
-      allowedJobIdConfigured,
+      ...common,
       allowedJobId,
     };
   }
@@ -156,10 +163,7 @@ function readPublisherRoute(
     requestedMode,
     effectiveMode: "disabled",
     reason: "unsupported_publisher_mode",
-    safetyAckConfigured,
-    safetyAckValid,
-    accountConfigured,
-    allowedJobIdConfigured,
+    ...common,
   };
 }
 
@@ -204,6 +208,7 @@ export const workerConfig = {
   sourceIngestionIntervalMs: Number(process.env.SOURCE_INGESTION_INTERVAL_MS ?? 43_200_000),
   btcbreakdownBaseUrl: normalizeBaseUrl(process.env.BTCBREAKDOWN_BASE_URL ?? "https://www.btcbreakdown.com"),
   linkedinPublisherAccountId: process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "",
+  linkedinPublisherTargetUrn: process.env.LINKEDIN_PUBLISHER_TARGET_URN?.trim() ?? "",
   linkedinApiBaseUrl: normalizeBaseUrl(process.env.LINKEDIN_API_BASE_URL ?? "https://api.linkedin.com/rest"),
   linkedinApiVersion: process.env.LINKEDIN_API_VERSION?.trim() || "202606",
   linkedinUserInfoUrl: process.env.LINKEDIN_USERINFO_URL?.trim() || "https://api.linkedin.com/v2/userinfo",

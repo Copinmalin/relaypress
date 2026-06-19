@@ -27,6 +27,8 @@ type PublisherRoutingEntry = {
   safetyAckValid: boolean;
   accountConfigured: boolean;
   allowedJobIdConfigured: boolean;
+  targetConfigured: boolean;
+  targetUrn?: string;
   reason?: string;
 };
 
@@ -36,7 +38,10 @@ function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
   }
 
   if (route.effectiveMode === "real" && route.platform === "linkedin") {
-    return createLinkedInPublisher({ allowedJobId: route.allowedJobId });
+    return createLinkedInPublisher({
+      allowedJobId: route.allowedJobId,
+      targetUrn: route.targetUrn,
+    });
   }
 
   return createDisabledPublisher(
@@ -68,6 +73,8 @@ export function describePublisherRouting(): PublisherRoutingEntry[] {
       safetyAckValid: route.safetyAckValid,
       accountConfigured: route.accountConfigured,
       allowedJobIdConfigured: route.allowedJobIdConfigured,
+      targetConfigured: route.targetConfigured,
+      targetUrn: route.targetUrn,
       reason: route.reason,
     };
   });
@@ -176,6 +183,7 @@ async function createStartedRun(job: ClaimedPublicationJob, publisher: Publicati
         routedPlatform: job.platform,
         contentLength: job.adapted_content?.length ?? 0,
         constrainedToSingleJob: Boolean(publisher.allowedJobId),
+        publisherTargetUrn: publisher.targetUrn,
       },
     ],
   );
@@ -210,6 +218,7 @@ async function markRunAsPublished(
         platform: job.platform,
         externalPostId,
         contentLength: job.adapted_content?.length ?? 0,
+        publisherTargetUrn: publisher.targetUrn,
         publisherResponse: rawResponse,
       },
     ],
@@ -245,6 +254,7 @@ async function markRunAsFailed(
         platform: job.platform,
         error: message,
         contentLength: job.adapted_content?.length ?? 0,
+        publisherTargetUrn: publisher.targetUrn,
         publisherResponse: publisherRawResponse,
       },
     ],
@@ -333,6 +343,7 @@ export async function processApprovedPublicationJobs(): Promise<number> {
         platform: job.platform,
         externalPostId: result.externalPostId,
         contentLength: job.adapted_content?.length ?? 0,
+        publisherTargetUrn: publisher.targetUrn,
         timestamp: new Date().toISOString(),
       }));
     } catch (error) {
