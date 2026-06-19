@@ -46,6 +46,7 @@ export type PublicationPublisher = {
   component: string;
   maxJobsPerTick?: number;
   allowedJobId?: string;
+  targetUrn?: string;
   isReady: () => Promise<PublisherReadiness>;
   publish: (job: ClaimedPublicationJob) => Promise<PublicationPublishResult>;
 };
