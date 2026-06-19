@@ -43,12 +43,14 @@ type ManualDraftBody = {
   platforms?: string[];
 };
 
-const SUPPORTED_MANUAL_PLATFORMS = new Set(["x", "linkedin", "facebook", "instagram"]);
+const SUPPORTED_MANUAL_PLATFORMS = new Set(["x", "linkedin", "facebook", "instagram", "nostr_longform"]);
 
 const PUBLICATION_JOB_SELECT = `
   select
     j.id,
     j.source_event_id,
+    j.source_item_id,
+    j.editorial_signal_id,
     j.platform,
     j.status,
     j.source_content,
@@ -91,6 +93,8 @@ function rowToPublicationJob(row: Record<string, unknown>) {
   return {
     id: row.id,
     sourceEventId: row.source_event_id,
+    sourceItemId: row.source_item_id,
+    editorialSignalId: row.editorial_signal_id,
     platform: row.platform,
     status: row.status,
     sourceContent: row.source_content,
@@ -538,15 +542,101 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
           from publication_job_runs
           where job_id = $1
           order by started_at ${order}
+          limit 50
         `,
         [request.params.id],
       );
 
       return {
         count: result.rowCount,
-        order,
         runs: result.rows.map(rowToPublicationJobRun),
       };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/approve",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await approvePublicationJob(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "not_approvable",
+          message: "Job is not pending review or was already published",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams; Body: RejectBody }>(
+    "/publication-jobs/:id/reject",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const reason = request.body?.reason?.trim() || "Rejected by admin";
+      const job = await rejectPublicationJob(request.params.id, reason);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "not_rejectable",
+          message: "Job cannot be rejected in its current state",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/retry",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await retryPublicationJob(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "not_retryable",
+          message: "Only failed unpublished jobs can be retried",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/reset-review",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await resetPublicationJobToReview(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "not_resettable",
+          message: "Only rejected or failed unpublished jobs can be returned to review",
+        });
+      }
+
+      return { job };
+    },
+  );
+
+  app.post<{ Params: PublicationJobParams }>(
+    "/publication-jobs/:id/readapt",
+    { preHandler: requireAdminToken },
+    async (request, reply) => {
+      const job = await readaptPublicationJobContent(request.params.id);
+
+      if (!job) {
+        return reply.code(409).send({
+          error: "not_readaptable",
+          message: "Job cannot be readapted in its current state",
+        });
+      }
+
+      return { job };
     },
   );
 
@@ -564,94 +654,8 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
 
       if (!job) {
         return reply.code(409).send({
-          error: "content_not_editable",
-          message: "Only unpublished pending, pending_review, rejected or failed jobs can be edited",
-        });
-      }
-
-      return { job };
-    },
-  );
-
-  app.post<{ Params: PublicationJobParams }>(
-    "/publication-jobs/:id/readapt",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const job = await readaptPublicationJobContent(request.params.id);
-
-      if (!job) {
-        return reply.code(409).send({
-          error: "job_not_readaptable",
-          message: "Only unpublished pending, pending_review, rejected or failed jobs can be readapted from sourceContent",
-        });
-      }
-
-      return { job };
-    },
-  );
-
-  app.post<{ Params: PublicationJobParams }>(
-    "/publication-jobs/:id/approve",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const job = await approvePublicationJob(request.params.id);
-
-      if (!job) {
-        return reply.code(409).send({
-          error: "job_not_approvable",
-          message: "Only unpublished pending or pending_review jobs can be approved",
-        });
-      }
-
-      return { job };
-    },
-  );
-
-  app.post<{ Params: PublicationJobParams; Body: RejectBody }>(
-    "/publication-jobs/:id/reject",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const reason = request.body?.reason?.trim() || "Rejected from API";
-      const job = await rejectPublicationJob(request.params.id, reason);
-
-      if (!job) {
-        return reply.code(409).send({
-          error: "job_not_rejectable",
-          message: "Only unpublished pending, pending_review or approved jobs can be rejected",
-        });
-      }
-
-      return { job };
-    },
-  );
-
-  app.post<{ Params: PublicationJobParams }>(
-    "/publication-jobs/:id/retry",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const job = await retryPublicationJob(request.params.id);
-
-      if (!job) {
-        return reply.code(409).send({
-          error: "job_not_retryable",
-          message: "Only unpublished failed jobs can be retried",
-        });
-      }
-
-      return { job };
-    },
-  );
-
-  app.post<{ Params: PublicationJobParams }>(
-    "/publication-jobs/:id/reset-review",
-    { preHandler: requireAdminToken },
-    async (request, reply) => {
-      const job = await resetPublicationJobToReview(request.params.id);
-
-      if (!job) {
-        return reply.code(409).send({
-          error: "job_not_resettable",
-          message: "Only unpublished rejected or failed jobs can be reset to pending_review",
+          error: "not_editable",
+          message: "Job cannot be edited in its current state",
         });
       }
 
@@ -666,10 +670,7 @@ export async function registerPublicationJobRoutes(app: FastifyInstance): Promis
       const job = await archivePublicationJob(request.params.id);
 
       if (!job) {
-        return reply.code(409).send({
-          error: "job_not_archivable",
-          message: "Publication job not found or currently publishing",
-        });
+        return reply.code(404).send({ error: "not_found", message: "Publication job not found" });
       }
 
       return { job };
