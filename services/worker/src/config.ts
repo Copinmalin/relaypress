@@ -1,6 +1,7 @@
 import type { PublisherPlatform } from "./publisher/types.js";
 
 export const LINKEDIN_REAL_SAFETY_ACK_VALUE = "I_UNDERSTAND_LINKEDIN_REAL_PUBLICATION";
+export const NOSTR_REAL_SAFETY_ACK_VALUE = "I_UNDERSTAND_NOSTR_REAL_PUBLICATION";
 
 export function readCsvEnv(name: string, fallback: string[] = []): string[] {
   const value = process.env[name];
@@ -25,6 +26,52 @@ function normalizeBaseUrl(value: string): string {
 
 function isSupportedLinkedInTargetUrn(value: string): boolean {
   return value.startsWith("urn:li:person:") || value.startsWith("urn:li:organization:");
+}
+
+function supportsRealPublisher(platform: PublisherPlatform): boolean {
+  return platform === "linkedin" || platform === "nostr_longform";
+}
+
+function readSafetyAckValid(platform: PublisherPlatform, safetyAck: string): boolean {
+  if (platform === "linkedin") return safetyAck === LINKEDIN_REAL_SAFETY_ACK_VALUE;
+  if (platform === "nostr_longform") return safetyAck === NOSTR_REAL_SAFETY_ACK_VALUE;
+  return false;
+}
+
+function readAccountConfigured(platform: PublisherPlatform): boolean {
+  if (platform === "linkedin") {
+    return (process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "").length > 0;
+  }
+
+  if (platform === "nostr_longform") {
+    return (process.env.NOSTR_PRIVATE_KEY_NSEC?.trim() ?? "").length > 0;
+  }
+
+  return false;
+}
+
+function readAllowedJobId(platform: PublisherPlatform): string {
+  if (platform === "linkedin") return process.env.LINKEDIN_REAL_ALLOWED_JOB_ID?.trim() ?? "";
+  if (platform === "nostr_longform") return process.env.NOSTR_REAL_ALLOWED_JOB_ID?.trim() ?? "";
+  return "";
+}
+
+function missingAccountReason(platform: PublisherPlatform): string {
+  if (platform === "linkedin") return "linkedin_publisher_account_id_missing";
+  if (platform === "nostr_longform") return "nostr_private_key_nsec_missing";
+  return "publisher_account_configuration_missing";
+}
+
+function missingAllowedJobReason(platform: PublisherPlatform): string {
+  if (platform === "linkedin") return "linkedin_real_allowed_job_id_missing";
+  if (platform === "nostr_longform") return "nostr_real_allowed_job_id_missing";
+  return "publisher_real_allowed_job_id_missing";
+}
+
+function missingSafetyAckReason(platform: PublisherPlatform): string {
+  if (platform === "linkedin") return "linkedin_real_safety_ack_missing_or_invalid";
+  if (platform === "nostr_longform") return "nostr_real_safety_ack_missing_or_invalid";
+  return "publisher_real_safety_ack_missing_or_invalid";
 }
 
 export type PublisherEffectiveMode = "mock" | "disabled" | "real";
@@ -53,12 +100,11 @@ function readPublisherRoute(
   const requestedMode = (process.env[envName] ?? fallback).trim().toLowerCase();
   const safetyAck = process.env[safetyAckEnvName]?.trim() ?? "";
   const safetyAckConfigured = safetyAck.length > 0;
-  const safetyAckValid = platform === "linkedin" && safetyAck === LINKEDIN_REAL_SAFETY_ACK_VALUE;
-  const accountId = process.env.LINKEDIN_PUBLISHER_ACCOUNT_ID?.trim() ?? "";
-  const allowedJobId = process.env.LINKEDIN_REAL_ALLOWED_JOB_ID?.trim() ?? "";
+  const safetyAckValid = readSafetyAckValid(platform, safetyAck);
+  const allowedJobId = readAllowedJobId(platform);
   const targetUrn = process.env.LINKEDIN_PUBLISHER_TARGET_URN?.trim() ?? "";
-  const accountConfigured = platform === "linkedin" && accountId.length > 0;
-  const allowedJobIdConfigured = platform === "linkedin" && allowedJobId.length > 0;
+  const accountConfigured = readAccountConfigured(platform);
+  const allowedJobIdConfigured = supportsRealPublisher(platform) && allowedJobId.length > 0;
   const targetConfigured = platform === "linkedin" && targetUrn.length > 0;
 
   const common = {
@@ -92,13 +138,13 @@ function readPublisherRoute(
   }
 
   if (requestedMode === "real") {
-    if (platform !== "linkedin") {
+    if (!supportsRealPublisher(platform)) {
       return {
         platform,
         envName,
         requestedMode,
         effectiveMode: "disabled",
-        reason: "real_publisher_not_enabled_in_pr_x0",
+        reason: "real_publisher_not_enabled",
         ...common,
       };
     }
@@ -120,7 +166,7 @@ function readPublisherRoute(
         envName,
         requestedMode,
         effectiveMode: "disabled",
-        reason: "linkedin_real_safety_ack_missing_or_invalid",
+        reason: missingSafetyAckReason(platform),
         ...common,
       };
     }
@@ -131,7 +177,7 @@ function readPublisherRoute(
         envName,
         requestedMode,
         effectiveMode: "disabled",
-        reason: "linkedin_publisher_account_id_missing",
+        reason: missingAccountReason(platform),
         ...common,
       };
     }
@@ -142,7 +188,7 @@ function readPublisherRoute(
         envName,
         requestedMode,
         effectiveMode: "disabled",
-        reason: "linkedin_real_allowed_job_id_missing",
+        reason: missingAllowedJobReason(platform),
         ...common,
       };
     }
@@ -218,6 +264,7 @@ export const workerConfig = {
     "wss://nos.lol",
     "wss://relay.primal.net",
   ]),
+  nostrPrivateKeyNsec: process.env.NOSTR_PRIVATE_KEY_NSEC?.trim() ?? "",
   nostrAllowedPubkeys: readCsvEnv("NOSTR_ALLOWED_PUBKEYS"),
   nostrIndexAll: readBooleanEnv("NOSTR_INDEX_ALL", false),
   nostrLookbackSeconds: Number(process.env.NOSTR_LOOKBACK_SECONDS ?? 3600),
