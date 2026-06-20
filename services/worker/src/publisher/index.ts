@@ -4,6 +4,7 @@ import { pool } from "../db.js";
 import { createDisabledPublisher } from "./disabled-publisher.js";
 import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
+import { createNostrPublisher } from "./nostr-publisher.js";
 import type {
   ClaimedPublicationJob,
   PublicationPublisher,
@@ -41,6 +42,12 @@ function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
     return createLinkedInPublisher({
       allowedJobId: route.allowedJobId,
       targetUrn: route.targetUrn,
+    });
+  }
+
+  if (route.effectiveMode === "real" && route.platform === "nostr_longform") {
+    return createNostrPublisher({
+      allowedJobId: route.allowedJobId,
     });
   }
 
