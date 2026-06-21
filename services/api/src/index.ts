@@ -21,6 +21,7 @@ await migrateDatabase();
 await app.register(cors, { origin: true });
 await registerPublicationJobRoutes(app);
 await registerPublisherAccountRoutes(app);
+await registerOneShotOperatorRoutes(app);
 await registerSourceItemRoutes(app);
 await registerSignalPublicationJobRoutes(app);
 await registerSourceGroupRoutes(app);
