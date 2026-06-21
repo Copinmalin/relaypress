@@ -5,6 +5,7 @@ import { encryptSecret } from "./crypto.js";
 import { pool } from "./db.js";
 import { completeLinkedInOAuth, createLinkedInAuthorizationUrl, refreshLinkedInAccount } from "./linkedin-oauth.js";
 import { checkPublisherConnection } from "./publisher-connection-check.js";
+import { completeXOAuth, createXAuthorizationUrl, refreshXAccount } from "./x-oauth.js";
 
 type PublisherAccountsQuery = {
   provider?: string;
@@ -15,7 +16,7 @@ type PublisherAccountParams = {
   id: string;
 };
 
-type LinkedInOAuthCallbackQuery = {
+type OAuthCallbackQuery = {
   code?: string;
   state?: string;
   error?: string;
@@ -157,6 +158,27 @@ async function upsertPublisherAccount(body: Required<Pick<UpsertPublisherAccount
   return findPublisherAccountById(result.rows[0].id);
 }
 
+async function refreshPublisherAccount(id: string) {
+  const account = await findPublisherAccountById(id);
+
+  if (!account) return null;
+  if (account.provider === "linkedin") return refreshLinkedInAccount(id, { force: true });
+  if (account.provider === "x") return refreshXAccount(id, { force: true });
+
+  return {
+    id: account.id,
+    provider: account.provider,
+    accountUrn: account.accountUrn,
+    refreshed: false,
+    reason: "provider_refresh_not_supported",
+  };
+}
+
+function redirectOAuthError(reply: { redirect: (url: string) => unknown }, provider: string, message: string) {
+  const encodedMessage = encodeURIComponent(message);
+  return reply.redirect(`/admin/publishers?${provider}_oauth=error&message=${encodedMessage}`);
+}
+
 export async function registerPublisherAccountRoutes(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: PublisherAccountsQuery }>(
     "/publisher-accounts",
@@ -281,7 +303,7 @@ export async function registerPublisherAccountRoutes(app: FastifyInstance): Prom
     { preHandler: requireAdminToken },
     async (request, reply) => {
       try {
-        const result = await refreshLinkedInAccount(request.params.id, { force: true });
+        const result = await refreshPublisherAccount(request.params.id);
 
         if (!result) {
           return reply.code(404).send({ error: "not_found", message: "Publisher account not found" });
@@ -301,24 +323,50 @@ export async function registerPublisherAccountRoutes(app: FastifyInstance): Prom
     async () => ({ authorizationUrl: createLinkedInAuthorizationUrl() }),
   );
 
-  app.get<{ Querystring: LinkedInOAuthCallbackQuery }>(
+  app.get<{ Querystring: OAuthCallbackQuery }>(
     "/publisher-accounts/linkedin/oauth/callback",
     async (request, reply) => {
       if (request.query.error) {
-        const message = encodeURIComponent(request.query.error_description || request.query.error);
-        return reply.redirect(`/admin/publishers?linkedin_oauth=error&message=${message}`);
+        return redirectOAuthError(reply, "linkedin", request.query.error_description || request.query.error);
       }
 
       if (!request.query.code || !request.query.state) {
-        return reply.redirect("/admin/publishers?linkedin_oauth=error&message=missing_code_or_state");
+        return redirectOAuthError(reply, "linkedin", "missing_code_or_state");
       }
 
       try {
         await completeLinkedInOAuth(request.query.code, request.query.state);
         return reply.redirect("/admin/publishers?linkedin_oauth=success");
       } catch (error) {
-        const message = encodeURIComponent(error instanceof Error ? error.message : String(error));
-        return reply.redirect(`/admin/publishers?linkedin_oauth=error&message=${message}`);
+        const message = error instanceof Error ? error.message : String(error);
+        return redirectOAuthError(reply, "linkedin", message);
+      }
+    },
+  );
+
+  app.post(
+    "/publisher-accounts/x/oauth/start",
+    { preHandler: requireAdminToken },
+    async () => ({ authorizationUrl: createXAuthorizationUrl() }),
+  );
+
+  app.get<{ Querystring: OAuthCallbackQuery }>(
+    "/publisher-accounts/x/oauth/callback",
+    async (request, reply) => {
+      if (request.query.error) {
+        return redirectOAuthError(reply, "x", request.query.error_description || request.query.error);
+      }
+
+      if (!request.query.code || !request.query.state) {
+        return redirectOAuthError(reply, "x", "missing_code_or_state");
+      }
+
+      try {
+        await completeXOAuth(request.query.code, request.query.state);
+        return reply.redirect("/admin/publishers?x_oauth=success");
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        return redirectOAuthError(reply, "x", message);
       }
     },
   );
