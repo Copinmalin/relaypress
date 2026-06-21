@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { workerConfig, type PublisherRouteConfig } from "../config.js";
 import { pool } from "../db.js";
 import { createDisabledPublisher } from "./disabled-publisher.js";
+import { createFacebookPublisher } from "./facebook-publisher.js";
 import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
 import { createNostrPublisher } from "./nostr-publisher.js";
@@ -54,6 +55,12 @@ function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
 
   if (route.effectiveMode === "real" && route.platform === "x") {
     return createXPublisher({
+      allowedJobId: route.allowedJobId,
+    });
+  }
+
+  if (route.effectiveMode === "real" && route.platform === "facebook") {
+    return createFacebookPublisher({
       allowedJobId: route.allowedJobId,
     });
   }
