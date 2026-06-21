@@ -26,12 +26,22 @@ type XUserMeResponse = {
   };
 };
 
+type FacebookPageResponse = {
+  id?: unknown;
+  name?: unknown;
+};
+
 const LINKEDIN_USERINFO_URL = "https://api.linkedin.com/v2/userinfo";
 const X_API_BASE_URL = "https://api.x.com/2";
 const X_USERS_ME_PATH = "/users/me";
+const FACEBOOK_PAGE_URN_PREFIX = "urn:facebook:page:";
 
 function getXApiBaseUrl(): string {
   return (process.env.X_API_BASE_URL?.trim() || X_API_BASE_URL).replace(/\/+$/, "");
+}
+
+function getMetaGraphApiBaseUrl(): string {
+  return (process.env.META_GRAPH_API_BASE_URL?.trim() || "https://graph.facebook.com/v23.0").replace(/\/+$/, "");
 }
 
 function sanitizeProviderResponse(payload: unknown): Record<string, unknown> {
@@ -44,13 +54,20 @@ function sanitizeProviderResponse(payload: unknown): Record<string, unknown> {
   }
 
   const record = payload as Record<string, unknown>;
+  const nestedError = record.error && typeof record.error === "object"
+    ? record.error as Record<string, unknown>
+    : null;
 
   return {
-    code: record.code,
-    message: typeof record.message === "string" ? record.message.slice(0, 1_000) : undefined,
+    code: record.code ?? nestedError?.code,
+    message: typeof record.message === "string"
+      ? record.message.slice(0, 1_000)
+      : typeof nestedError?.message === "string"
+        ? nestedError.message.slice(0, 1_000)
+        : undefined,
     detail: typeof record.detail === "string" ? record.detail.slice(0, 1_000) : undefined,
     title: typeof record.title === "string" ? record.title.slice(0, 1_000) : undefined,
-    type: record.type,
+    type: record.type ?? nestedError?.type,
     status: record.status,
     serviceErrorCode: record.serviceErrorCode,
     data: record.data,
@@ -198,6 +215,57 @@ async function checkXConnection(
   };
 }
 
+function extractFacebookPageId(accountUrn: string): string | null {
+  if (!accountUrn.startsWith(FACEBOOK_PAGE_URN_PREFIX)) return null;
+  const pageId = accountUrn.slice(FACEBOOK_PAGE_URN_PREFIX.length).trim();
+  return pageId || null;
+}
+
+async function checkFacebookConnection(
+  account: StoredPublisherConnection,
+  credential: string,
+): Promise<Record<string, unknown>> {
+  const pageId = extractFacebookPageId(account.account_urn);
+
+  if (!pageId) {
+    await markPublisherConnection(account.id, "invalid");
+    return {
+      ok: false,
+      provider: account.provider,
+      accountUrn: account.account_urn,
+      status: "invalid",
+      message: "Facebook account URN must use urn:facebook:page:<page-id>",
+    };
+  }
+
+  const url = new URL(`${getMetaGraphApiBaseUrl()}/${pageId}`);
+  url.searchParams.set("fields", "id,name");
+  const { response, payload } = await readProviderJson(url.toString(), credential);
+
+  if (!response.ok) {
+    return invalidProviderResponse(account, response, payload);
+  }
+
+  const page = payload as FacebookPageResponse;
+  const returnedPageId = typeof page.id === "string" ? page.id : null;
+  const expectedAccountUrn = returnedPageId ? `urn:facebook:page:${returnedPageId}` : null;
+  const urnMatches = Boolean(expectedAccountUrn && expectedAccountUrn === account.account_urn);
+  const status = urnMatches ? "connected" : "invalid";
+
+  await markPublisherConnection(account.id, status);
+
+  return {
+    ok: urnMatches,
+    provider: account.provider,
+    accountUrn: account.account_urn,
+    expectedAccountUrn,
+    status,
+    pageId: returnedPageId,
+    displayName: typeof page.name === "string" ? page.name : null,
+    scopes: account.scopes,
+  };
+}
+
 export async function checkPublisherConnection(id: string): Promise<Record<string, unknown> | null> {
   const account = await findStoredPublisherConnection(id);
 
@@ -216,6 +284,10 @@ export async function checkPublisherConnection(id: string): Promise<Record<strin
 
   if (account.provider === "x") {
     return checkXConnection(account, credential);
+  }
+
+  if (account.provider === "facebook") {
+    return checkFacebookConnection(account, credential);
   }
 
   return {
