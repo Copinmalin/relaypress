@@ -5,6 +5,7 @@ import { createDisabledPublisher } from "./disabled-publisher.js";
 import { createLinkedInPublisher } from "./linkedin-publisher.js";
 import { createMockPublisher } from "./mock-publisher.js";
 import { createNostrPublisher } from "./nostr-publisher.js";
+import { createXPublisher } from "./x-publisher.js";
 import type {
   ClaimedPublicationJob,
   PublicationPublisher,
@@ -47,6 +48,12 @@ function createPublisher(route: PublisherRouteConfig): PublicationPublisher {
 
   if (route.effectiveMode === "real" && route.platform === "nostr_longform") {
     return createNostrPublisher({
+      allowedJobId: route.allowedJobId,
+    });
+  }
+
+  if (route.effectiveMode === "real" && route.platform === "x") {
+    return createXPublisher({
       allowedJobId: route.allowedJobId,
     });
   }

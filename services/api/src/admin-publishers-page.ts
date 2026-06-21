@@ -15,7 +15,7 @@ const publishersHtml = String.raw`<!doctype html>
     .subtitle, .hint, .meta, .status { color: #9ca3af; }
     .panel, .card { background: rgba(17, 24, 39, 0.88); border: 1px solid rgba(148, 163, 184, 0.22); border-radius: 18px; box-shadow: 0 18px 45px rgba(0,0,0,0.28); }
     .panel { padding: 16px; margin: 18px 0; }
-    .controls { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; align-items: center; }
+    .controls { display: grid; grid-template-columns: 1fr auto auto auto auto; gap: 10px; align-items: center; }
     input, button, select { border-radius: 12px; border: 1px solid rgba(148, 163, 184, 0.32); background: rgba(3, 7, 18, 0.82); color: #f9fafb; padding: 10px 12px; font: inherit; }
     button { cursor: pointer; }
     button:hover { border-color: #f97316; }
@@ -31,7 +31,7 @@ const publishersHtml = String.raw`<!doctype html>
     .invalid, .expired { border-color: #ef4444; color: #fecaca; }
     .warning { color: #fde68a; }
     .ok { color: #bbf7d0; }
-    @media (max-width: 760px) { body { padding: 14px; } .controls, .row { grid-template-columns: 1fr; } }
+    @media (max-width: 960px) { body { padding: 14px; } .controls, .row { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
@@ -53,6 +53,8 @@ const publishersHtml = String.raw`<!doctype html>
           <option value="wordpress">WordPress</option>
         </select>
         <button class="primary" id="refresh">Rafraîchir</button>
+        <button id="connectLinkedin">Connecter LinkedIn</button>
+        <button id="connectX">Connecter X</button>
       </div>
       <div class="status" id="statusLine">Initialisation…</div>
       <div class="hint" id="tokenHint"></div>
@@ -64,6 +66,8 @@ const publishersHtml = String.raw`<!doctype html>
     var tokenInput = document.querySelector('#token');
     var providerInput = document.querySelector('#provider');
     var refreshButton = document.querySelector('#refresh');
+    var connectLinkedinButton = document.querySelector('#connectLinkedin');
+    var connectXButton = document.querySelector('#connectX');
     var cards = document.querySelector('#cards');
     var statusLine = document.querySelector('#statusLine');
     var tokenHint = document.querySelector('#tokenHint');
@@ -77,10 +81,14 @@ const publishersHtml = String.raw`<!doctype html>
     function updateTokenHint() { tokenHint.textContent = hasToken() ? 'Token admin présent.' : 'Token admin absent.'; }
     function yesNo(value) { return value ? '<span class="ok">oui</span>' : '<span class="warning">non</span>'; }
 
-    async function api(path) {
+    async function api(path, options) {
       var token = tokenInput.value.trim();
+      var requestOptions = options || {};
       if (!token) throw new Error('ADMIN_API_TOKEN manquant');
-      var response = await fetch(path, { headers: { Authorization: 'Bearer ' + token } });
+      var response = await fetch(path, {
+        method: requestOptions.method || 'GET',
+        headers: { Authorization: 'Bearer ' + token },
+      });
       var payload = await response.json().catch(function () { return {}; });
       if (!response.ok) throw new Error(payload.message || payload.error || ('HTTP ' + response.status));
       return payload;
@@ -127,9 +135,23 @@ const publishersHtml = String.raw`<!doctype html>
       }
     }
 
+    async function startOAuth(provider) {
+      updateTokenHint();
+      statusLine.textContent = 'Démarrage OAuth ' + provider + '…';
+      try {
+        var payload = await api('/publisher-accounts/' + provider + '/oauth/start', { method: 'POST' });
+        if (!payload.authorizationUrl) throw new Error('URL OAuth absente');
+        window.location.assign(payload.authorizationUrl);
+      } catch (error) {
+        statusLine.textContent = 'Erreur OAuth ' + provider + ': ' + error.message;
+      }
+    }
+
     tokenInput.addEventListener('input', function () { localStorage.setItem('relaypress.adminToken', tokenInput.value.trim()); updateTokenHint(); });
     providerInput.addEventListener('change', loadAccounts);
     refreshButton.addEventListener('click', loadAccounts);
+    connectLinkedinButton.addEventListener('click', function () { startOAuth('linkedin'); });
+    connectXButton.addEventListener('click', function () { startOAuth('x'); });
     updateTokenHint();
     loadAccounts();
   </script>
