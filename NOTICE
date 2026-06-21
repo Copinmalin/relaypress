@@ -1,0 +1,44 @@
+RelayPress Notice
+=================
+
+RelayPress is a sovereign editorial orchestration application originally created by Copinmalin.
+
+Official upstream repository:
+https://github.com/Copinmalin/relaypress
+
+License
+-------
+
+RelayPress source code is licensed under the GNU Affero General Public License v3.0 or later, identified by the SPDX expression:
+
+AGPL-3.0-or-later
+
+See the LICENSE file for the full license text.
+
+Attribution
+-----------
+
+Redistributions, forks and modified versions should preserve this notice and clearly state that they are based on RelayPress.
+
+Recommended attribution wording:
+
+Based on RelayPress, originally created by Copinmalin, licensed under AGPL-3.0-or-later.
+
+Modified versions should also clearly indicate:
+
+- the name of the fork or derivative project;
+- the upstream RelayPress commit, tag or release used as a base when practical;
+- a summary of material changes;
+- where the corresponding source code is available.
+
+Trademark and brand use
+-----------------------
+
+The RelayPress name, logo and visual identity are not licensed as source code. Their use is governed by TRADEMARK.md.
+
+The AGPL license grants rights to use, study, modify and share the code. It does not grant permission to present a modified service, fork or commercial offer as the official RelayPress project.
+
+No warranty
+-----------
+
+RelayPress is provided without warranty, including for publication outcomes, third-party API changes, platform policy enforcement, account restrictions, data loss, payment failures or operational incidents.
