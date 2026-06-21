@@ -56,7 +56,7 @@ const response = await fetch(`${base}/publication-jobs?status=approved&limit=100
 const payload = await response.json();
 if (!response.ok) throw new Error(JSON.stringify(payload));
 if (payload.count > 0) {
-  throw new Error(`PR X0 smoke requires zero pre-existing approved jobs, found ${payload.count}`);
+  throw new Error(`PR X0/Y2 smoke requires zero pre-existing approved jobs, found ${payload.count}`);
 }
 console.log("APPROVED_QUEUE_EMPTY=OK");
 NODE
@@ -160,8 +160,8 @@ grep -q '"platform": "instagram"' <<< "$MOCK_RUN_OUTPUT"
 grep -q '"platform": "nostr_longform"' <<< "$MOCK_RUN_OUTPUT"
 grep -q '"requestedMode": "mock"' <<< "$MOCK_RUN_OUTPUT"
 
-if grep -q 'real_publisher_not_enabled_in_pr_x0' <<< "$MOCK_RUN_OUTPUT"; then
-  echo "Unexpected blocked real route during the mock phase" >&2
+if grep -q 'x_real_safety_ack_missing_or_invalid' <<< "$MOCK_RUN_OUTPUT"; then
+  echo "Unexpected blocked X real route during the mock phase" >&2
   exit 1
 fi
 
@@ -213,8 +213,9 @@ for (const entry of entries) {
 }
 NODE
 
-# Create a second approved X job and request a real mode. PR X0 must block it,
-# claim zero jobs and leave the job approved without an external id.
+# Create a second approved X job and request real mode without the explicit
+# safety acknowledgement. PR Y2 must block it, claim zero jobs and leave the
+# job approved without an external id.
 BLOCKED_X_ID="$(
   docker compose exec -T api node <<'NODE'
 const base = "http://127.0.0.1:3000";
@@ -235,7 +236,7 @@ async function api(path, options = {}) {
 
 const created = await api("/publication-jobs/manual-draft", {
   method: "POST",
-  body: JSON.stringify({ content: `PR-X0-BLOCKED-${Date.now()}`, platforms: ["x"] }),
+  body: JSON.stringify({ content: `PR-Y2-BLOCKED-${Date.now()}`, platforms: ["x"] }),
 });
 const job = created.jobs[0];
 await api(`/publication-jobs/${encodeURIComponent(job.id)}/approve`, { method: "POST" });
@@ -271,7 +272,7 @@ printf '%s\n' "$BLOCKED_RUN_OUTPUT"
 
 grep -q '"requestedMode": "real"' <<< "$BLOCKED_RUN_OUTPUT"
 grep -q '"effectiveMode": "disabled"' <<< "$BLOCKED_RUN_OUTPUT"
-grep -q 'real_publisher_not_enabled_in_pr_x0' <<< "$BLOCKED_RUN_OUTPUT"
+grep -q 'x_real_safety_ack_missing_or_invalid' <<< "$BLOCKED_RUN_OUTPUT"
 grep -q 'BLOCKED_PUBLISHED_JOBS=0' <<< "$BLOCKED_RUN_OUTPUT"
 
 docker compose exec -T -e JOB_ID="$BLOCKED_X_ID" api node <<'NODE'
