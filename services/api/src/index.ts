@@ -11,6 +11,7 @@ import { registerPublisherAccountRoutes } from "./publisher-accounts.js";
 import { registerSignalPublicationJobRoutes } from "./signal-publication-jobs.js";
 import { registerSourceGroupRoutes } from "./source-groups.js";
 import { registerSourceItemRoutes } from "./source-items.js";
+import { registerOneShotOperatorRoutes } from "./one-shot-operator.js";
 
 const app = Fastify({ logger: true });
 const port = Number(process.env.PORT ?? 3000);
