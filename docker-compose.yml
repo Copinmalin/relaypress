@@ -1,0 +1,29 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: relaypress
+      POSTGRES_USER: relaypress
+      POSTGRES_PASSWORD: relaypress
+    volumes:
+      - relaypress_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U relaypress"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build: .
+    environment:
+      PORT: 3000
+      DATABASE_URL: postgres://relaypress:relaypress@postgres:5432/relaypress
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  relaypress_db:
