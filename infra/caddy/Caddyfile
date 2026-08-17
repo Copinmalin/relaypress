@@ -1,7 +1,0 @@
-{$PUBLISHER_DOMAIN:app.relaypress.localhost}, {$API_DOMAIN:api.relaypress.localhost} {
-  reverse_proxy api:3000
-}
-
-{$RELAY_DOMAIN:relay.relaypress.localhost} {
-  reverse_proxy strfry:7777
-}
